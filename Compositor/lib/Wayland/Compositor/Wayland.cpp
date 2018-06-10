@@ -1,10 +1,13 @@
 #include "Module.h"
 #include "Wayland.h"
 #include "../Client/Client.h"
-#include <interfaces/IResourceCenter.h>
 #include <interfaces/IComposition.h>
 
 #include <virtualinput/VirtualKeyboard.h>
+
+#ifdef USE_WPEFRAMEWORK_NXSERVER
+#include <IPlatform.h>
+#endif
 
 MODULE_NAME_DECLARATION(BUILD_REFERENCE)
 
@@ -13,21 +16,16 @@ namespace Plugin {
     /* -------------------------------------------------------------------------------------------------------------
      * This is a singleton. Declare all C accessors to this object here
      * ------------------------------------------------------------------------------------------------------------- */
-    class PlatformImplementation;
+    class CompositorImplementation;
 
-    static PlatformImplementation* _implementation = nullptr;
-    static Core::CriticalSection _resourceClientsLock;
-    static Core::CriticalSection _compositionClientsLock;
+    static CompositorImplementation* g_implementation = nullptr;
+    static Core::CriticalSection g_implementationLock;
 
-    /* -------------------------------------------------------------------------------------------------------------
-     *
-     * ------------------------------------------------------------------------------------------------------------- */
-    class PlatformImplementation : public Exchange::IResourceCenter,
-                                   public Exchange::IComposition,
-                                   public Wayland::Display::IProcess {
+    class CompositorImplementation : public Exchange::IComposition,
+                                     public Wayland::Display::IProcess {
     private:
-        PlatformImplementation(const PlatformImplementation&) = delete;
-        PlatformImplementation& operator=(const PlatformImplementation&) = delete;
+        CompositorImplementation(const CompositorImplementation&) = delete;
+        CompositorImplementation& operator=(const CompositorImplementation&) = delete;
 
         /* -------------------------------------------------------------------------------------------------------------
          *  Get some activity in our Display client
@@ -39,7 +37,7 @@ namespace Plugin {
             Job& operator=(const Job&) = delete;
 
         public:
-            Job(PlatformImplementation& parent)
+            Job(CompositorImplementation& parent)
                 : _parent(parent)
             {
             }
@@ -56,7 +54,7 @@ namespace Plugin {
             }
 
         private:
-            PlatformImplementation& _parent;
+            CompositorImplementation& _parent;
         };
 
         /* -------------------------------------------------------------------------------------------------------------
@@ -84,7 +82,6 @@ namespace Plugin {
                 Entry* result(nullptr);
 
                 display->Get(id, surface);
-
 
                 if (surface.IsValid() == true) {
                     result = Core::Service<Entry>::Create<Entry>(&surface, server);
@@ -172,7 +169,7 @@ namespace Plugin {
             Sink() = delete;
 
         public:
-            Sink(PlatformImplementation& parent)
+            Sink(CompositorImplementation& parent)
                 : _parent(parent)
             {
             }
@@ -189,21 +186,24 @@ namespace Plugin {
             }
 
         private:
-            PlatformImplementation& _parent;
+            CompositorImplementation& _parent;
         };
 
     public:
-        PlatformImplementation()
+        CompositorImplementation()
             : _config()
-            , _hardwarestate(Exchange::IResourceCenter::UNITIALIZED)
-            , _resourceClients()
             , _compositionClients()
+            , _clients()
             , _server(nullptr)
             , _controller(nullptr)
             , _job(*this)
             , _sink(*this)
             , _surface(nullptr)
             , _service()
+#ifdef USE_WPEFRAMEWORK_NXSERVER
+            , _nxsink(this)
+            , _nxserver(nullptr)
+#endif
         {
             // Register an @Exit, in case we are killed, with an incorrect ref count !!
             if (atexit(CloseDown) != 0) {
@@ -211,14 +211,17 @@ namespace Plugin {
                 exit(EXIT_FAILURE);
             }
 
-            // Wayland can only be instantiated once (it is a process wide singleton !!!!)
-            ASSERT(_implementation == nullptr);
+            // make sure we have one compositor in the system
+            ASSERT(g_implementation == nullptr);
 
-            _identifier[0] = 0;
-            _implementation = this;
+            g_implementation = this;
+
+#ifdef USE_WPEFRAMEWORK_NXSERVER
+            _nxserver = Exchange::IPlatform::Instance();
+#endif
         }
 
-        ~PlatformImplementation()
+        ~CompositorImplementation()
         {
             TRACE(Trace::Information, (_T("Stopping Wayland")));
 
@@ -239,12 +242,14 @@ namespace Plugin {
         }
 
     public:
-        BEGIN_INTERFACE_MAP(PlatformImplementation)
-        INTERFACE_ENTRY(Exchange::IResourceCenter)
+        BEGIN_INTERFACE_MAP(CompositorImplementation)
         INTERFACE_ENTRY(Exchange::IComposition)
         END_INTERFACE_MAP
 
     public:
+        // -------------------------------------------------------------------------------------------------------
+        //   IComposition methods
+        // -------------------------------------------------------------------------------------------------------
         /* virtual */ uint32_t Configure(PluginHost::IShell* service)
         {
             _service = service;
@@ -254,113 +259,21 @@ namespace Plugin {
 
             ASSERT(_server == nullptr);
 
-            // As there are currently two flavors of the potential Wayland Compositor Implementations, e.g.
-            // Westeros and Weston, we do not want to decide here which one we instantiate. We have given both
-            // implemntations a "generic" handle that starts the compositor. Here we just instantiate the
-            // one that is build together with this so, which might be westeros (if Westeros.cpp is compiled and
-            // linked with this so) or weston, if someone creates, in the near future a Westonr.cpp to be
-            // compiled with this so, in stead of the Westeros.cpp :-)
-            _server = Implementation::Create(_service->ConfigLine());
-
-            ASSERT(_server != nullptr);
-
-            if (_server != nullptr) {
-                // We need a Wayland client to be connected to the Wayland server. This is handled by the C++
-                // wrapper layer, found in the Client directory. Her we instantiate the wayland C++ compositor
-                // abstraction, to create/request a client from this abstraction.
-                // This C++ wayland Compositor abstraction instance, will in-fact, call the server, we just
-                // instantiated a few lines above.
-                _controller = &(Wayland::Display::Instance(_config.Display.Value()));
-                // OK ready to receive new connecting surfaces.
-                _controller->Callback(&_sink);
-                // We also want to be know the current surfaces.
-                _controller->LoadSurfaces();
-                // Firing up the compositor controllerr.
-                _job.Run();
-
-                TRACE(Trace::Information, (_T("Compositor initialized")));
-                _hardwarestate = Exchange::IResourceCenter::OPERATIONAL;
-                Notify();
-                SetEventPlatformReady();
+#ifdef USE_WPEFRAMEWORK_NXSERVER
+            // If we run on a broadcom platform first start the nxserver, then we start the compositor...
+            if (_nxserver != nullptr) {
+                _nxserver->Callback(&_nxsink);
+                _nxserver->Configure(_service);
             }
-
+#else
+            StartImplementation();
+#endif
             return ((_server != nullptr) && (_controller != nullptr)) ? Core::ERROR_NONE : Core::ERROR_UNAVAILABLE;
         }
-        void SetEventPlatformReady()
-        {
-            // The platform appears to be ready, set the event
-            PluginHost::ISubSystem* systemInfo = _service->QueryInterfaceByCallsign<PluginHost::ISubSystem>(string());
-
-            ASSERT(systemInfo != nullptr);
-
-            if ((systemInfo != nullptr) && (systemInfo->IsActive(PluginHost::ISubSystem::PLATFORM) == false)) {
-                systemInfo->Set(PluginHost::ISubSystem::PLATFORM, nullptr);
-            }
-
-            if (systemInfo != nullptr) {
-                systemInfo->Release();
-            }
-        }
-
-
-        // -------------------------------------------------------------------------------------------------------
-        //   IResourceCenter methods
-        // -------------------------------------------------------------------------------------------------------
-        /* virtual */ void Register(Exchange::IResourceCenter::INotification* notification)
-        {
-            // Do not double register a notification sink.
-            _resourceClientsLock.Lock();
-            ASSERT(std::find(_resourceClients.begin(), _resourceClients.end(), notification) == _resourceClients.end());
-
-            notification->AddRef();
-
-            _resourceClients.push_back(notification);
-
-            notification->StateChange(_hardwarestate);
-            _resourceClientsLock.Unlock();
-        }
-        /* virtual */ void Unregister(Exchange::IResourceCenter::INotification* notification)
-        {
-            _resourceClientsLock.Lock();
-            std::list<Exchange::IResourceCenter::INotification*>::iterator index(std::find(_resourceClients.begin(), _resourceClients.end(), notification));
-
-            // Do not un-register something you did not register.
-            ASSERT(index != _resourceClients.end());
-
-            notification->Release();
-
-            _resourceClients.erase(index);
-            _resourceClientsLock.Unlock();
-        }
-        /* virtual */ Exchange::IResourceCenter::hardware_state HardwareState() const
-        {
-            return (_hardwarestate);
-        }
-        /* virtual */ uint8_t Identifier(const uint8_t maxLength, uint8_t buffer[]) const
-        {
-            // TODO: For now use RawDeviceId, this needs to move or change in future.
-            _resourceClientsLock.Lock();
-
-            if (_identifier[0] == 0) {
-                const uint8_t* id(Core::SystemInfo::Instance().RawDeviceId());
-
-                _identifier[0] = ((sizeof(_identifier) - 1) < id[0] ? (sizeof(_identifier) - 1) : id[0]);
-                memcpy(&(_identifier[1]), &id[1], _identifier[0]);
-            }
-
-            _resourceClientsLock.Unlock();
-
-            ::memcpy(buffer, &_identifier[1], (maxLength >= _identifier[0] ? _identifier[0] : maxLength));
-            return _identifier[0];
-        }
-
-        // -------------------------------------------------------------------------------------------------------
-        //   IComposition methods
-        // -------------------------------------------------------------------------------------------------------
         /* virtual */ void Register(Exchange::IComposition::INotification* notification)
         {
             // Do not double register a notification sink.
-            _compositionClientsLock.Lock();
+            g_implementationLock.Lock();
             ASSERT(std::find(_compositionClients.begin(), _compositionClients.end(), notification) == _compositionClients.end());
 
             notification->AddRef();
@@ -376,11 +289,11 @@ namespace Plugin {
                 }
                 index++;
             }
-            _compositionClientsLock.Unlock();
+            g_implementationLock.Unlock();
         }
         /* virtual */ void Unregister(Exchange::IComposition::INotification* notification)
         {
-            _compositionClientsLock.Lock();
+            g_implementationLock.Lock();
             std::list<Exchange::IComposition::INotification*>::iterator index(std::find(_compositionClients.begin(), _compositionClients.end(), notification));
 
             // Do not un-register something you did not register.
@@ -392,14 +305,13 @@ namespace Plugin {
 
                 notification->Release();
             }
-            _compositionClientsLock.Unlock();
+            g_implementationLock.Unlock();
         }
-
         /* virtual */ Exchange::IComposition::IClient* Client(const string& name)
         {
             Exchange::IComposition::IClient* result = nullptr;
 
-            _compositionClientsLock.Lock();
+            g_implementationLock.Lock();
 
             std::list<Entry*>::iterator index(_clients.begin());
 
@@ -411,7 +323,7 @@ namespace Plugin {
                 result = (*index);
                 result->AddRef();
             }
-            _compositionClientsLock.Unlock();
+            g_implementationLock.Unlock();
 
             return (result);
         }
@@ -420,7 +332,7 @@ namespace Plugin {
             uint8_t modifiableId = id;
             Exchange::IComposition::IClient* result = nullptr;
 
-            _compositionClientsLock.Lock();
+            g_implementationLock.Lock();
             std::list<Entry*>::iterator index(_clients.begin());
             while ((index != _clients.end()) && (modifiableId != 0)) {
                 if ((*index)->IsActive() == true) {
@@ -433,7 +345,7 @@ namespace Plugin {
                 result = (*index);
                 result->AddRef();
             }
-            _compositionClientsLock.Unlock();
+            g_implementationLock.Unlock();
 
             return (result);
         }
@@ -443,42 +355,10 @@ namespace Plugin {
         // -------------------------------------------------------------------------------------------------------
         /* virtual */ bool Dispatch()
         {
-            printf("DISPATCH [%s:%d] %s.\n", __FILE__, __LINE__, __PRETTY_FUNCTION__);
             return (true);
         }
 
     private:
-        void RecursiveList(std::list<Exchange::IResourceCenter::INotification*>::iterator& index)
-        {
-            Exchange::IResourceCenter::INotification* callee(*index);
-
-            ASSERT(callee != nullptr);
-
-            if (callee != nullptr) {
-                callee->AddRef();
-
-                if (++index != _resourceClients.end()) {
-                    RecursiveList(index);
-                }
-                else {
-                    _resourceClientsLock.Unlock();
-                }
-
-                callee->StateChange(_hardwarestate);
-                callee->Release();
-            }
-        }
-        void Notify()
-        {
-            _resourceClientsLock.Lock();
-            if (_resourceClients.size() > 0) {
-                std::list<Exchange::IResourceCenter::INotification*>::iterator index(_resourceClients.begin());
-                RecursiveList(index);
-            }
-            else {
-                _resourceClientsLock.Unlock();
-            }
-        }
         void Add(const uint32_t id)
         {
             std::list<Entry*>::iterator index(_clients.begin());
@@ -543,21 +423,102 @@ namespace Plugin {
         static void CloseDown()
         {
             // Make sure we get exclusive access to the Destruction of this Resource Center.
-            _resourceClientsLock.Lock();
+            g_implementationLock.Lock();
 
             // Seems we are destructed.....If we still have a pointer to the implementation, Kill it..
-            if (_implementation != nullptr) {
-                delete _implementation;
-                _implementation = nullptr;
+            if (g_implementation != nullptr) {
+                delete g_implementation;
+                g_implementation = nullptr;
             }
-            _resourceClientsLock.Unlock();
+            g_implementationLock.Unlock();
         }
+        void StartImplementation()
+        {
+            ASSERT(_service != nullptr);
+
+#include <nxserverlib.h>
+printf("PID[%d] %s nxserverlib_get_singleton=%p\n", getpid(), __FUNCTION__, nxserverlib_get_singleton() );
+
+            // As there are currently two flavors of the potential Wayland Compositor Implementations, e.g.
+            // Westeros and Weston, we do not want to decide here which one we instantiate. We have given both
+            // implemntations a "generic" handle that starts the compositor. Here we just instantiate the
+            // one that is build together with this so, which might be westeros (if Westeros.cpp is compiled and
+            // linked with this so) or weston, if someone creates, in the near future a Westonr.cpp to be
+            // compiled with this so, in stead of the Westeros.cpp :-)
+            _server = Implementation::Create(_service);
+
+            ASSERT(_server != nullptr);
+
+            if (_server != nullptr) {
+                // We need a Wayland client to be connected to the Wayland server. This is handled by the C++
+                // wrapper layer, found in the Client directory. Her we instantiate the wayland C++ compositor
+                // abstraction, to create/request a client from this abstraction.
+                // This C++ wayland Compositor abstraction instance, will in-fact, call the server, we just
+                // instantiated a few lines above.
+                _controller = &(Wayland::Display::Instance(_config.Display.Value()));
+                // OK ready to receive new connecting surfaces.
+                _controller->Callback(&_sink);
+                // We also want to be know the current surfaces.
+                _controller->LoadSurfaces();
+                // Firing up the compositor controllerr.
+                _job.Run();
+
+                TRACE(Trace::Information, (_T("Compositor initialized")));
+
+                PluginHost::ISubSystem* subSystems = _service->SubSystems();
+
+                ASSERT(subSystems != nullptr);
+
+                if (subSystems != nullptr) {
+                    // Set Graphics event. We need to set up a handler for this at a later moment
+                    subSystems->Set(PluginHost::ISubSystem::GRAPHICS, nullptr);
+                    subSystems->Release();
+                }
+            }
+        }
+
+#ifdef USE_WPEFRAMEWORK_NXSERVER
+    private:
+        class NXSink : public WPEFramework::Exchange::IPlatform::ICallback {
+        private:
+            NXSink() = delete;
+            NXSink(const NXSink&) = delete;
+            NXSink& operator=(const NXSink&) = delete;
+
+        public:
+            explicit NXSink(CompositorImplementation* parent)
+                : _parent(*parent)
+            {
+                ASSERT(parent != nullptr);
+            }
+            ~NXSink()
+            {
+            }
+
+        public:
+            // -------------------------------------------------------------------------------------------------------
+            //   Platform::IPlatform::ICallback methods
+            // -------------------------------------------------------------------------------------------------------
+            /* virtual */ void Attached(nxclient_t client, const NxClient_JoinSettings* joinSettings)
+            { /* intentionally left empty */}
+
+            /* virtual */ void Detached(const char clientName[])
+            { /* intentionally left empty */}
+
+            /* virtual */ virtual void StateChange(Exchange::IPlatform::server_state state)
+            {
+                if (state == Exchange::IPlatform::OPERATIONAL) {
+                    _parent.StartImplementation();
+                }
+            }
+
+        private:
+            CompositorImplementation& _parent;
+        };
+#endif
 
     private:
         Config _config;
-        hardware_state _hardwarestate;
-        mutable uint8_t _identifier[16];
-        std::list<Exchange::IResourceCenter::INotification*> _resourceClients;
         std::list<Exchange::IComposition::INotification*> _compositionClients;
         std::list<Entry*> _clients;
         Implementation::IServer* _server;
@@ -566,9 +527,13 @@ namespace Plugin {
         Sink _sink;
         Wayland::Display::Surface* _surface;
         PluginHost::IShell* _service;
+#ifdef USE_WPEFRAMEWORK_NXSERVER
+        NXSink _nxsink;
+        Exchange::IPlatform* _nxserver;
+#endif
     };
 
-    SERVICE_REGISTRATION(PlatformImplementation, 1, 0);
+    SERVICE_REGISTRATION(CompositorImplementation, 1, 0);
 
 } // namespace Plugin
 

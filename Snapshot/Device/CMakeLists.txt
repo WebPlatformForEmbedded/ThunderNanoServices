@@ -1,8 +1,8 @@
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-find_package(BcmNxServer QUIET)
-if (LIBNXSERVER_FOUND)
+find_package(Nexus QUIET)
+if (LIBNEXUS_FOUND)
 
     list(APPEND PLUGIN_DEPENDENCIES_INCLUDE_DIRS ${LIBNXCLIENT_INCLUDE_DIRS})
     list(APPEND PLUGIN_DEPENDENCIES ${LIBNEXUS_LIBRARY} ${LIBNXCLIENT_LIBRARY})
@@ -12,7 +12,7 @@ if (LIBNXSERVER_FOUND)
             "BSTD_CPU_ENDIAN=BSTD_ENDIAN_LITTLE"
             PARENT_SCOPE)
 
-else (LIBNXSERVER_FOUND)
+else (LIBNEXUS_FOUND)
 
 find_package(BCMHost QUIET)
 
@@ -32,7 +32,7 @@ else (BCM_HOST_FOUND)
 message(FATAL_ERROR "There is no graphic backend for Snapshot plugin")
 endif (BCM_HOST_FOUND)
 
-endif (LIBNXSERVER_FOUND)
+endif (LIBNEXUS_FOUND)
 
 # pass the updated lists to parent CMake file
 set(PLUGIN_DEPENDENCIES_INCLUDE_DIRS "${PLUGIN_DEPENDENCIES_INCLUDE_DIRS}" PARENT_SCOPE)
