@@ -12,12 +12,16 @@ option(WPEFRAMEWORK_PLUGIN_COMPOSITOR_BOXMODE "Allows for selecting a boxmode (N
 option(WPEFRAMEWORK_PLUGIN_COMPOSITOR_GRAPHICS_HEAP_SIZE "Change graphic heap of driver (Nexus only).")
 option(WPEFRAMEWORK_PLUGIN_COMPOSITOR_INSTALL_NEXUS_SERVER "Enable to install the server to staging." OFF)
 option(WPEFRAMEWORK_NEXUS_SERVER_HAS_EXTENDED_INIT "Enable to support unauthenticated nxclients." ON)
+option(WPEFRAMEWORK_NEXUS_SERVER_SD_NOTIFY "Enable systemd notification when nexus server is ready." OFF)
 
 message("Setup WPEFramework${TARGET} v${VERSION}...")
 
 find_package(Nexus REQUIRED)
 find_package(NXServer REQUIRED)
 find_package(Core REQUIRED)
+if(WPEFRAMEWORK_NEXUS_SERVER_SD_NOTIFY)
+find_package(Systemd REQUIRED)
+endif()
 
 add_library(${TARGET} STATIC
         NexusServer.cpp
@@ -63,6 +67,23 @@ target_include_directories( ${TARGET}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:include/${NAMESPACE}>
         )
+
+
+if (WPEFRAMEWORK_NEXUS_SERVER_SD_NOTIFY)
+target_compile_definitions(${TARGET}
+        PRIVATE
+            ${SYSTEMD_DEFINITIONS}
+            NEXUS_SERVER_SD_NOTIFY
+        )
+target_include_directories(${TARGET}
+        PRIVATE
+            ${SYSTEMD_INCLUDE_DIRS}
+        )
+target_link_libraries(${TARGET}
+        PRIVATE
+            ${SYSTEMD_LIBRARIES}
+        )
+endif()
 
 add_library(${NAMESPACE}::${TARGET} ALIAS ${TARGET})
 

@@ -14,6 +14,10 @@
 #include <nexus_display.h>
 #include <sys/stat.h>
 
+#ifdef NEXUS_SERVER_SD_NOTIFY
+#include <systemd/sd-daemon.h>
+#endif
+
 BDBG_MODULE(NexusServer);
 
 namespace WPEFramework {
@@ -394,6 +398,7 @@ namespace Broadcom {
 
                         if (rc == NEXUS_SUCCESS) {
                             TRACE_L1("Created NexusServer[%p].\n", &_instance);
+                            NotifyReady();
                         }
                         else {
                             TRACE_L1("nxserver_ipc_init failed [%d]\n", rc);
@@ -449,6 +454,26 @@ namespace Broadcom {
         if (_stateHandler != nullptr) {
             _stateHandler->StateChange(_state);
         }
+    };
+
+    void Platform::NotifyReady(void)
+    {
+        int rc;
+
+        TRACE_L1("Notify Nexus Server Ready\n");
+#ifdef NEXUS_SERVER_SD_NOTIFY
+        rc = sd_notifyf(0,
+                "READY=1\n"
+                "STATUS=Nexus Server is Ready (from WPE Framework Compositor Plugin)\n"
+                "MAINPID=%lu",
+                getpid());
+        if (rc) {
+            TRACE_L1("Notify Nexus Server Ready to systemd: FAILED (%d)\n", rc);
+        }
+        else {
+            TRACE_L1("Notify Nexus Server Ready to systemd: OK\n");
+        }
+#endif
     };
 
 } // Broadcom
