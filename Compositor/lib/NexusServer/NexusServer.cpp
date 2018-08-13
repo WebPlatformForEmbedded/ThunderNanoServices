@@ -4,10 +4,10 @@
 #include <nexus_types.h>
 #include <nexus_platform.h>
 #include <nxclient.h>
+#ifdef NEXUS_SERVER_EXTERNAL
 #include <nxserverlib.h>
+#endif
 #include <nexus_display_vbi.h>
-
-/* print_capabilities */
 #if NEXUS_HAS_VIDEO_DECODER
 #include <nexus_video_decoder.h>
 #endif
@@ -16,9 +16,8 @@
 
 BDBG_MODULE(NexusServer);
 
-
-
 namespace WPEFramework {
+
     ENUM_CONVERSION_BEGIN(Exchange::IComposition::ScreenResolution)
 
     { Exchange::IComposition::ScreenResolution_Unknown,   _TXT("Unknown")   },
@@ -34,6 +33,7 @@ namespace WPEFramework {
     { Exchange::IComposition::ScreenResolution_2160p60Hz, _TXT("2160p60Hz") },
 
     ENUM_CONVERSION_END(Exchange::IComposition::ScreenResolution)
+
 namespace Broadcom {
     static const std::map<const Exchange::IComposition::ScreenResolution, const NEXUS_VideoFormat > formatLookup = {
         { Exchange::IComposition::ScreenResolution::ScreenResolution_Unknown, NEXUS_VideoFormat_eUnknown },
@@ -191,6 +191,7 @@ namespace Broadcom {
      * ------------------------------------------------------------------------------------------------------------- */
     /* static */ Platform* Platform::_implementation = nullptr;
 
+    #ifdef NEXUS_SERVER_EXTERNAL
     static int find_unused_heap(const NEXUS_PlatformSettings& platformSettings)
     {
         for (int i=NEXUS_MAX_HEAPS-1;i<NEXUS_MAX_HEAPS;i--) {
@@ -198,6 +199,8 @@ namespace Broadcom {
         }
         return -1;
     }
+    #endif
+
     /* static */ void Platform::CloseDown()
     {
         // Seems we are destructed.....If we still have a pointer to the implementation, Kill it..
@@ -234,15 +237,19 @@ namespace Broadcom {
     {
         _state = DEINITIALIZING;
 
+        #ifdef NEXUS_SERVER_EXTERNAL
         nxserver_ipc_uninit();
         nxserverlib_uninit(_instance);
         BKNI_DestroyMutex(_lock);
         NEXUS_Platform_Uninit();
+        #endif
 
-        NxClient_Uninit();
+        if (_joined == true) {
+            NxClient_Uninit();
+        }
     }
 
-    Platform::Platform(IStateChange* stateChanges, IClient* clientChanges, const std::string& configuration)
+    Platform::Platform(const string& callsign, IStateChange* stateChanges, IClient* clientChanges, const std::string& configuration)
         : _lock()
         , _instance()
         , _serverSettings()
@@ -252,6 +259,7 @@ namespace Broadcom {
         , _state(UNITIALIZED)
         , _clientHandler(clientChanges)
         , _stateHandler(stateChanges)
+        , _joined(false)
     {
         NEXUS_Error rc;
 
@@ -270,6 +278,8 @@ namespace Broadcom {
             }
 
             TRACE_L1("Start Nexus server...%d\n", __LINE__);
+
+            #ifdef NEXUS_SERVER_EXTERNAL
             Config config; config.FromString(configuration);
 
             if ((config.SagePath.IsSet() == true) && (config.SagePath.Value().empty() == false)) {
@@ -285,7 +295,7 @@ namespace Broadcom {
             }
 
             NxClient_GetDefaultJoinSettings(&(_joinSettings));
-            strcpy(_joinSettings.name, "NexusServerLocal");
+            strcpy(_joinSettings.name, callsign.c_str());
 
             nxserver_get_default_settings(&(_serverSettings));
             NEXUS_Platform_GetDefaultSettings(&(_platformSettings));
@@ -452,6 +462,8 @@ namespace Broadcom {
             else {
                 TRACE_L1("nxserver_modify_platform_settings failed [%d]\n", rc);
             }
+
+            #endif // NEXUS_SERVER_EXTERNAL
         }
 
         StateChange(rc == NEXUS_SUCCESS ? OPERATIONAL : FAILURE);
@@ -460,23 +472,29 @@ namespace Broadcom {
     }
     uint32_t Platform::Resolution(const Exchange::IComposition::ScreenResolution format)
     {
-        uint32_t result = Core::ERROR_UNKNOWN_KEY_PASSED;
-        NxClient_DisplaySettings displaySettings;
+        uint32_t result = Core::ERROR_ILLEGAL_STATE;
 
-        NxClient_GetDisplaySettings(&displaySettings);
+        if (_joined == true) {
 
-        const auto index(formatLookup.find(format));
+            result = Core::ERROR_UNKNOWN_KEY_PASSED;
 
-        if ( (index != formatLookup.cend()) && 
-             (index->second != NEXUS_VideoFormat_eUnknown) ) {
+            NxClient_DisplaySettings displaySettings;
 
-            result = Core::ERROR_NONE;
+            NxClient_GetDisplaySettings(&displaySettings);
 
-            if (index->second != displaySettings.format) {
+            const auto index(formatLookup.find(format));
 
-                displaySettings.format = index->second;
-                if (NxClient_SetDisplaySettings(&displaySettings) != 0) {
-                    result = Core::ERROR_GENERAL;
+            if ( (index != formatLookup.cend()) && 
+                 (index->second != NEXUS_VideoFormat_eUnknown) ) {
+
+                result = Core::ERROR_NONE;
+
+                if (index->second != displaySettings.format) {
+
+                    displaySettings.format = index->second;
+                    if (NxClient_SetDisplaySettings(&displaySettings) != 0) {
+                        result = Core::ERROR_GENERAL;
+                    }
                 }
             }
         }
@@ -485,16 +503,19 @@ namespace Broadcom {
     Exchange::IComposition::ScreenResolution Platform::Resolution() const
     {
         Exchange::IComposition::ScreenResolution result (Exchange::IComposition::ScreenResolution_Unknown);
-        NxClient_DisplaySettings displaySettings;
 
-        NxClient_GetDisplaySettings(&displaySettings);
-        NEXUS_VideoFormat format = displaySettings.format;
-        const auto index = std::find_if(formatLookup.cbegin(), formatLookup.cend(),
+        if (_joined == true) {
+            NxClient_DisplaySettings displaySettings;
+
+            NxClient_GetDisplaySettings(&displaySettings);
+            NEXUS_VideoFormat format = displaySettings.format;
+            const auto index = std::find_if(formatLookup.cbegin(), formatLookup.cend(),
                       [format](const std::pair<const Exchange::IComposition::ScreenResolution, const NEXUS_VideoFormat>& entry)
                       { return entry.second == format; });
 
-        if (index != formatLookup.cend()) {
-            result = index->first;
+            if (index != formatLookup.cend()) {
+                result = index->first;
+            }
         }
         return (result);
     }
@@ -543,4 +564,4 @@ ENUM_CONVERSION_BEGIN(Broadcom::Config::svptype)
 
 ENUM_CONVERSION_END(Broadcom::Config::svptype);
 
-} // oPEFramework
+} // WPEFramework
