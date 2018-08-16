@@ -1,16 +1,8 @@
-#include <stdio.h>
-#include <string.h>
 #include "Module.h"
 
-#include <interfaces/IComposition.h>
-
-#ifdef  USE_WPEFRAMEWORK_NXSERVER
 #include <NexusServer.h>
-#else
-#include <nexus_config.h>
-#include <nexus_video_types.h>
-#include <nxclient.h>
-#endif
+
+#include <interfaces/IComposition.h>
 
 MODULE_NAME_DECLARATION(BUILD_REFERENCE)
 
@@ -92,12 +84,6 @@ namespace Plugin {
                 , _delay(nullptr)
             {
                 ASSERT(parent != nullptr);
-                if (_delay != nullptr) {
-                    _delay->Run();
-                }
-                else {
-                    _parent.PlatformReady();
-                }
             }
             ~Sink()
             {
@@ -192,7 +178,7 @@ namespace Plugin {
 
             _sink.HardwareDelay(info.HardwareDelay.Value());
 
-            _nxserver = new Broadcom::Platform(&_sink, &_sink, configuration);
+            _nxserver = new Broadcom::Platform(service->Callsign(), &_sink, &_sink, configuration);
 
             ASSERT(_nxserver != nullptr);
 
@@ -394,6 +380,7 @@ namespace Plugin {
 
                 // Now the platform is ready we should Join it as well, since we 
                 // will do generic (not client related) stuff as well.
+
                 if ((_nxserver != nullptr) && (_nxserver->Join() != true)) {
                     TRACE(Trace::Information, (_T("Could not Join the started NXServer.")));
                 }
