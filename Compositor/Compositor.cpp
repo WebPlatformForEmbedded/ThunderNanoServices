@@ -239,6 +239,7 @@ namespace Plugin {
 
         string name(client->Name());
 
+        TRACE_L1("Client detached starting: %s", name.c_str());
         _adminLock.Lock();
         std::map<string, Exchange::IComposition::IClient*>::iterator it = _clients.find(name);
 
@@ -246,6 +247,7 @@ namespace Plugin {
             it->second->Release();
             _clients.erase(it);
         }
+        TRACE_L1("Client detached completed: %s", name.c_str());
         _adminLock.Unlock();
 
         TRACE(Trace::Information, (_T("Client %s detached"), name.c_str()));

@@ -19,7 +19,19 @@ message("Setup WPEFramework${TARGET} v${VERSION}...")
 find_package(Nexus REQUIRED)
 find_package(Core REQUIRED)
 
-if (WPEFRAMEWORK_NEXUS_SERVER_EXTERNAL )
+add_library(${TARGET} STATIC
+        NexusServer.cpp
+        )
+
+
+if (WPEFRAMEWORK_NEXUS_SERVER_EXTERNAL)
+    target_link_libraries(${TARGET}
+        PRIVATE
+            WPEFramework::Core
+        PUBLIC
+            NEXUS::NXCLIENT
+        )
+else()
     find_package(NXServer REQUIRED)
     target_link_libraries(${TARGET}
         PRIVATE
@@ -29,18 +41,7 @@ if (WPEFRAMEWORK_NEXUS_SERVER_EXTERNAL )
         PUBLIC
             NEXUS::NXCLIENT_LOCAL
         )
-else()
-    target_link_libraries(${TARGET}
-        PRIVATE
-            WPEFramework::Core
-        PUBLIC
-            NEXUS::NXCLIENT
-        )
 endif()
-
-add_library(${TARGET} STATIC
-        NexusServer.cpp
-        )
 
 set(PUBLIC_HEADERS
         NexusServer.h

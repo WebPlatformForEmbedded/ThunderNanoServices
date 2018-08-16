@@ -4,7 +4,7 @@
 #include <nexus_types.h>
 #include <nexus_platform.h>
 #include <nxclient.h>
-#ifdef NEXUS_SERVER_EXTERNAL
+#ifndef NEXUS_SERVER_EXTERNAL
 #include <nxserverlib.h>
 #endif
 #include <nexus_display_vbi.h>
@@ -175,7 +175,7 @@ namespace Broadcom {
      * ------------------------------------------------------------------------------------------------------------- */
     /* static */ Platform* Platform::_implementation = nullptr;
 
-    #ifdef NEXUS_SERVER_EXTERNAL
+    #ifndef NEXUS_SERVER_EXTERNAL
     static int find_unused_heap(const NEXUS_PlatformSettings& platformSettings)
     {
         for (int i=NEXUS_MAX_HEAPS-1;i<NEXUS_MAX_HEAPS;i--) {
@@ -221,7 +221,7 @@ namespace Broadcom {
     {
         _state = DEINITIALIZING;
 
-        #ifdef NEXUS_SERVER_EXTERNAL
+        #ifndef NEXUS_SERVER_EXTERNAL
         nxserver_ipc_uninit();
         nxserverlib_uninit(_instance);
         BKNI_DestroyMutex(_lock);
@@ -263,7 +263,7 @@ namespace Broadcom {
 
             TRACE_L1("Start Nexus server...%d\n", __LINE__);
 
-            #ifdef NEXUS_SERVER_EXTERNAL
+            #ifndef NEXUS_SERVER_EXTERNAL
             Config config; config.FromString(configuration);
 
             if ((config.SagePath.IsSet() == true) && (config.SagePath.Value().empty() == false)) {

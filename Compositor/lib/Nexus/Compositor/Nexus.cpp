@@ -312,6 +312,7 @@ namespace Plugin {
                         TRACE(Trace::Information, (_T("Client already registered %s."), name.c_str()));
                     }
                     else {
+                        client->AddRef();
                         _clients.push_back(client);
 
                         TRACE(Trace::Information, (_T("Added client %s."), name.c_str()));
