@@ -14,6 +14,7 @@
 #include <nexus_display.h>
 #include <sys/stat.h>
 
+
 BDBG_MODULE(NexusServer);
 
 namespace WPEFramework {
@@ -32,7 +33,6 @@ namespace Broadcom {
         { Exchange::IComposition::ScreenResolution::ScreenResolution_2160p50Hz, NEXUS_VideoFormat_e4096x2160p50hz },
         { Exchange::IComposition::ScreenResolution::ScreenResolution_2160p60Hz, NEXUS_VideoFormat_e4096x2160p60hz }
     };
-
     /* virtual */ string Platform::Client::Name() const
     {
         return (::std::string(Id()));
@@ -65,7 +65,23 @@ namespace Broadcom {
 
         TRACE(Trace::Information, (_T("Geometry client %s size=%dx%d position=%dx%d"), X,Y,width,height));
 
-        NEXUS_SurfaceComposition geometry;
+        NEXUS_SurfaceComposition comp;
+#if 0
+        unsigned int surfaceId = GetSurfaceId(_client);
+        // NxClient_GetSurfaceClientComposition(clientID, &comp);
+        NxClient_P_GetSurfaceClientComposition(_client, surfaceId , &comp);
+        printf("Getting info for %d: %d,%d,%d,%d.\n", surfaceId, comp.position.x, comp.position.y, comp.position.width, comp.position.height);
+        comp.virtualDisplay.width  = 0;
+        comp.virtualDisplay.height = 0;
+        comp.position.width  = width;
+        comp.position.height = height;
+        comp.position.x = X;
+        comp.position.y = Y;
+        NxClient_P_SetSurfaceClientComposition(_client, surfaceId, &comp);
+        // NxClient_P_Config_SetSurfaceClientComposition(_client, nullptr, surfaceHandle, &comp);
+        TRACE(Trace::Information, (_T("Geometry enter3")));
+#endif
+
     }
 
     /* virtual */ void Platform::Client::Visible(const bool visible)
@@ -376,7 +392,7 @@ namespace Broadcom {
             if (config.SVPType.IsSet() == true) {
                 _serverSettings.svp = static_cast<nxserverlib_svp_type>(config.SVPType.Value());
             }
-
+	    
             /* display[1] will always be either SD or transcode */
             if (!_platformCapabilities.display[1].supported || _platformCapabilities.display[1].encoder) {
                 for (unsigned int i = 0; i < NXCLIENT_MAX_SESSIONS; i++)
@@ -393,8 +409,10 @@ namespace Broadcom {
 #if NEXUS_PLATFORM_VERSION_MAJOR < 16 || (NEXUS_PLATFORM_VERSION_MAJOR == 16 && NEXUS_PLATFORM_VERSION_MINOR < 3)
                 _serverSettings.session[i].ir_input_mode = static_cast<NEXUS_IrInputMode>(config.IRMode.Value());
 #else
-                for (unsigned int irInputIndex = 0; i < NXSERVER_IR_INPUTS; i++)
+                for (unsigned int irInputIndex = 0; i < NXSERVER_IR_INPUTS; i++) {
                     _serverSettings.session[i].ir_input.mode[irInputIndex] = static_cast<NEXUS_IrInputMode>(config.IRMode.Value());
+                    _serverSettings.session[i].keypad = true;
+                }
 #endif // NEXUS_PLATFORM_VERSION_MAJOR < 17
 #endif // NEXUS_HAS_IR_INPUT
 
