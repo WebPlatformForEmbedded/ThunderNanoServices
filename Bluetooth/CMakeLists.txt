@@ -3,7 +3,7 @@ set(MODULE_NAME ${NAMESPACE}${PLUGIN_NAME})
 
 message("Setting up ${PLUGIN_NAME}")
 
-find_package(GLIB REQUIRED)
+find_package(GLIB REQUIRED COMPONENTS gio)
 find_package(DBUS REQUIRED)
 
 set(PLUGIN_SOURCES
