@@ -11,6 +11,7 @@ class TestCommandController
 {
     private:
         using TestCommandContainer = std::map<string, Exchange::ITestUtility::ICommand*>;
+        using TestCommandContainerPair = std::pair<string, Exchange::ITestUtility::ICommand*>;
 
         class Iterator : public Exchange::ITestUtility::ICommand::IIterator
         {

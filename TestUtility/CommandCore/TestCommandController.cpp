@@ -14,7 +14,8 @@ void TestCommandController::Announce(Exchange::ITestUtility::ICommand* command)
     ASSERT(command != nullptr);
 
     _adminLock.Lock();
-    _commands[command->Name()] = command;
+    std::pair<TestCommandContainer::iterator, bool> returned = _commands.insert(TestCommandContainerPair(command->Name(), command));
+    ASSERT((returned.second == true) && "Test command already exists!");
     _adminLock.Unlock();
 }
 
