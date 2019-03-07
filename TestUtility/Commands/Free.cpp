@@ -5,7 +5,7 @@
 namespace WPEFramework {
 
 class Free : public TestCommandBase {
-    private:
+    public:
         Free(const Free&) = delete;
         Free& operator=(const Free&) = delete;
 

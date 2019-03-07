@@ -5,6 +5,10 @@
 namespace WPEFramework {
 
 class MemoryAllocation {
+    public:
+        MemoryAllocation(const MemoryAllocation&) = delete;
+        MemoryAllocation& operator=(const MemoryAllocation&) = delete;
+
     private:
         class MemoryOutputMetadata : public Core::JSON::Container {
         private:
@@ -28,9 +32,6 @@ class MemoryAllocation {
             Core::JSON::DecSInt32 Size;
             Core::JSON::DecSInt32 Resident;
         };
-
-        MemoryAllocation(const MemoryAllocation&) = delete;
-        MemoryAllocation& operator=(const MemoryAllocation&) = delete;
 
         MemoryAllocation()
             : _lock()

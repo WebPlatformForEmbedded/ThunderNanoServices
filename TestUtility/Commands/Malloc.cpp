@@ -5,9 +5,13 @@
 namespace WPEFramework {
 
 class Malloc : public TestCommandBase {
+    public:
+        Malloc(const Malloc&) = delete;
+        Malloc& operator=(const Malloc&) = delete;
+
     private:
         class MallocInputMetadata : public Core::JSON::Container {
-            private:
+            public:
                 MallocInputMetadata(const MallocInputMetadata&) = delete;
                 MallocInputMetadata& operator=(const MallocInputMetadata&) = delete;
 
@@ -23,9 +27,6 @@ class Malloc : public TestCommandBase {
             public:
                 Core::JSON::DecSInt32 Size;
         };
-
-        Malloc(const Malloc&) = delete;
-        Malloc& operator=(const Malloc&) = delete;
 
     public:
         using Parameter = TestCore::TestCommandSignature::Parameter;

@@ -5,7 +5,7 @@
 namespace WPEFramework {
 
 class Statm : public TestCommandBase {
-    private:
+    public:
         Statm(const Statm&) = delete;
         Statm& operator=(const Statm&) = delete;
 

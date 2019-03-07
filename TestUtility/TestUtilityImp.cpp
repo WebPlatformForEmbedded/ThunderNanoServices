@@ -8,7 +8,7 @@ namespace TestCore {
 
     class TestUtilityImp : public Exchange::ITestUtility
     {
-        private:
+        public:
             TestUtilityImp(const TestUtilityImp&) = delete;
             TestUtilityImp& operator=(const TestUtilityImp&) = delete;
 

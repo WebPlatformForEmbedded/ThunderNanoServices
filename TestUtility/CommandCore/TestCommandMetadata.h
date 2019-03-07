@@ -6,7 +6,7 @@ namespace WPEFramework {
 namespace TestCore {
 
 class TestCommandDescription : public Core::JSON::Container {
-private:
+public:
     TestCommandDescription(const TestCommandDescription&) = delete;
     TestCommandDescription& operator=(const TestCommandDescription&) = delete;
 
@@ -25,7 +25,7 @@ public:
 };
 
 class TestCommandName : public Core::JSON::Container {
-private:
+public:
     TestCommandName(const TestCommandName&) = delete;
     TestCommandName& operator=(const TestCommandName&) = delete;
 

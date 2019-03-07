@@ -7,8 +7,13 @@ namespace WPEFramework {
 
 class TestCommandBase : public Exchange::ITestUtility::ICommand {
     public:
+        TestCommandBase() = delete;
+        TestCommandBase(const TestCommandBase&) = delete;
+        TestCommandBase& operator=(const TestCommandBase&) = delete;
+
+    public:
         class SignatureBuilder {
-            private:
+            public:
                 SignatureBuilder() = delete;
                 SignatureBuilder(const SignatureBuilder&) = delete;
                 SignatureBuilder& operator=(const SignatureBuilder&) = delete;
@@ -45,7 +50,7 @@ class TestCommandBase : public Exchange::ITestUtility::ICommand {
         };
 
         class DescriptionBuilder {
-            private:
+            public:
                 DescriptionBuilder() = delete;
                 DescriptionBuilder(const DescriptionBuilder&) = delete;
                 DescriptionBuilder& operator=(const DescriptionBuilder&) = delete;
@@ -72,11 +77,6 @@ class TestCommandBase : public Exchange::ITestUtility::ICommand {
 
                 TestCore::TestCommandDescription _jsonDescription;
         };
-
-    private:
-        TestCommandBase() = delete;
-        TestCommandBase(const TestCommandBase&) = delete;
-        TestCommandBase& operator=(const TestCommandBase&) = delete;
 
     public:
         explicit TestCommandBase(const DescriptionBuilder& description, const SignatureBuilder& signature)

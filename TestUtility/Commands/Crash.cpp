@@ -6,7 +6,7 @@
 namespace WPEFramework {
 
 class Crash : public TestCommandBase {
-private:
+public:
     Crash(const Crash&) = delete;
     Crash& operator=(const Crash&) = delete;
 
@@ -32,7 +32,7 @@ public:
 
 private:
     class CrashInputMetadata : public Core::JSON::Container {
-    private:
+    public:
         CrashInputMetadata(const CrashInputMetadata&) = delete;
         CrashInputMetadata& operator=(const CrashInputMetadata&) = delete;
 

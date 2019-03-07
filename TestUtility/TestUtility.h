@@ -14,9 +14,13 @@ public:
     // maximum wait time for process to be spawned
     static constexpr uint32_t ImplWaitTime = 1000;
 
+public:
+    TestUtility(const TestUtility&) = delete;
+    TestUtility& operator=(const TestUtility&) = delete;
+
 private:
     class Notification : public RPC::IRemoteProcess::INotification {
-    private:
+    public:
         Notification() = delete;
         Notification(const Notification&) = delete;
 
@@ -42,7 +46,7 @@ private:
     };
 
     class Metadata : public Core::JSON::Container {
-        private:
+        public:
             Metadata(const Metadata&) = delete;
             Metadata& operator=(const Metadata&) = delete;
 
@@ -91,9 +95,6 @@ public:
     virtual Core::ProxyType<Web::Response> Process(const Web::Request& request);
 
 private:
-    TestUtility(const TestUtility&) = delete;
-    TestUtility& operator=(const TestUtility&) = delete;
-
     void Activated(RPC::IRemoteProcess* process);
     void Deactivated(RPC::IRemoteProcess* process);
 

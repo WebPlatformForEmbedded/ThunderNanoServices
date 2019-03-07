@@ -8,7 +8,7 @@
 namespace WPEFramework {
 
 class CrashCore {
-private:
+public:
     CrashCore(const CrashCore&) = delete;
     CrashCore& operator=(const CrashCore&) = delete;
 
@@ -19,7 +19,7 @@ public:
 public:
     // ToDo: maybe error response should be generic and moved to TestCore
     class ErrorRes : public Core::JSON::Container {
-    private:
+    public:
         ErrorRes(const ErrorRes&) = delete;
         ErrorRes& operator=(const ErrorRes&) = delete;
 

@@ -9,12 +9,20 @@ namespace TestCore {
 
 class TestCommandController
 {
+    public:
+        TestCommandController(const TestCommandController&) = delete;
+        TestCommandController& operator=(const TestCommandController&) = delete;
+
     private:
         using TestCommandContainer = std::map<string, Exchange::ITestUtility::ICommand*>;
         using TestCommandContainerPair = std::pair<string, Exchange::ITestUtility::ICommand*>;
 
         class Iterator : public Exchange::ITestUtility::ICommand::IIterator
         {
+            public:
+                Iterator(const Iterator&) = delete;
+                Iterator& operator= (const Iterator&) = delete;
+
             public:
                 using IteratorImpl = Core::IteratorMapType<TestCommandContainer, Exchange::ITestUtility::ICommand*, string>;
 
@@ -24,9 +32,6 @@ class TestCommandController
                     , _iterator(_container) { }
 
                 virtual ~Iterator() = default;
-
-                Iterator(const Iterator&) = delete;
-                Iterator& operator= (const Iterator&) = delete;
 
                 BEGIN_INTERFACE_MAP(Iterator)
                     INTERFACE_ENTRY(Exchange::ITestUtility::ICommand::IIterator)
@@ -53,8 +58,6 @@ class TestCommandController
                     IteratorImpl _iterator;
         };
 
-        TestCommandController(const TestCommandController&) = delete;
-        TestCommandController& operator=(const TestCommandController&) = delete;
         TestCommandController()
             : _adminLock()
             , _commands()

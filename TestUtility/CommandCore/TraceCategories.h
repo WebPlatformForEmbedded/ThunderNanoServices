@@ -4,7 +4,7 @@ namespace WPEFramework {
 namespace TestCore {
 
 class TestLifeCycle {
-    private:
+    public:
         TestLifeCycle() = delete;
         TestLifeCycle(const TestLifeCycle& a_Copy) = delete;
         TestLifeCycle& operator=(const TestLifeCycle& a_RHS) = delete;
@@ -32,7 +32,7 @@ class TestLifeCycle {
     };
 
     class TestOutput {
-    private:
+    public:
         TestOutput() = delete;
         TestOutput(const TestOutput& a_Copy) = delete;
         TestOutput& operator=(const TestOutput& a_RHS) = delete;
