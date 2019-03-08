@@ -60,7 +60,6 @@ SERVICE_REGISTRATION(TestUtility, 1, 0);
 
 /* virtual */ const string TestUtility::Initialize(PluginHost::IShell* service)
 {
-    /*Assume that everything is OK*/
     string message = EMPTY_STRING;
 
     ASSERT(service != nullptr);
@@ -99,11 +98,13 @@ SERVICE_REGISTRATION(TestUtility, 1, 0);
     ASSERT(_service == service);
     ASSERT(_testUtilityImp != nullptr);
     ASSERT(_memory != nullptr);
-    ASSERT(_pid);
 
-    TRACE(Trace::Information, (_T("*** OutOfProcess Plugin is properly destructed. PID: %d ***"), _pid))
+    if (_testUtilityImp->Release() != Core::ERROR_DESTRUCTION_SUCCEEDED)
+    {
+        TRACE(Trace::Information, (_T("TestUtility is not properly destructed (pid=%d)"), _pid));
+        ProcessTermination(_pid);
+    }
 
-    ProcessTermination(_pid);
     _testUtilityImp = nullptr;
     _memory->Release();
     _memory = nullptr;
