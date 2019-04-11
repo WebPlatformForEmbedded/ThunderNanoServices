@@ -51,8 +51,8 @@ namespace WPEFramework {
             uint32_t getActiveInput(const JsonObject& parameters, JsonObject& response);
             uint32_t getTvHDRSupport(const JsonObject& parameters, JsonObject& response);
             uint32_t getSettopHDRSupport(const JsonObject& parameters, JsonObject& response);
-            uint32_t setVideoPortStandbyStatus(const JsonObject& parameters, JsonObject& response);
-            uint32_t getVideoPortStandbyStatus(const JsonObject& parameters, JsonObject& response);
+            uint32_t setVideoPortStatusInStandby(const JsonObject& parameters, JsonObject& response);
+            uint32_t getVideoPortStatusInStandby(const JsonObject& parameters, JsonObject& response);
             //End methods
 
             //Begin events

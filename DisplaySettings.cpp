@@ -1,11 +1,8 @@
+//I have put several "TODO(MROLLINS)" in the code below to mark areas of concern I encountered 
+//  when refactoring the servicemanager's version of displaysettings into this new thunder plugin format
+
 #include "DisplaySettings.h"
 #include <algorithm>
-
-#define MYLOG(...) fprintf(logger, __VA_ARGS__); fflush(logger);
-#define MYWARN(...) fprintf(logger, __VA_ARGS__); fflush(logger);
-#define MYERROR(...) fprintf(logger, __VA_ARGS__); fflush(logger);
-#define MYTRACE() fprintf(logger, "%s\n", __PRETTY_FUNCTION__); fflush(logger);
-
 #include "dsMgr.h"
 #include "libIBusDaemon.h"
 #include "host.hpp"
@@ -23,7 +20,52 @@
 #include "list.hpp"
 #include "libIBus.h"
 #include "dsDisplay.h"
+#include "rdk/iarmmgrs-hal/pwrMgr.h"
 
+//TODO(MROLLINS) - i'm doing fprintf to /opt/logs/ds.log now for simplicity and easy debugging
+//but eventually these log macros need to call the wpe logger instead of fprintf.  
+#define MYLOG(...) fprintf(logger, __VA_ARGS__); fflush(logger);
+#define MYWARN(...) fprintf(logger, __VA_ARGS__); fflush(logger);
+#define MYERROR(...) fprintf(logger, __VA_ARGS__); fflush(logger);
+#define MYTRACEMETHOD() { string json; parameters.ToString(json); fprintf(logger, "%s parameters=%s\n", __FUNCTION__, json.c_str() ); fflush(logger); }
+#define MYTRACEMETHODFIN() { string json; response.ToString(json); fprintf(logger, "%s response=%s\n", __FUNCTION__, json.c_str() ); fflush(logger); }
+#define MYTRACE() fprintf(logger, "%s\n", __PRETTY_FUNCTION__); fflush(logger);
+#define LOG_DEVICE_EXCEPTION0() MYWARN("Exception caught while processing %s code=%d message=%s\n", __FUNCTION__, err.getCode(), err.what());
+#define LOG_DEVICE_EXCEPTION1(param1) MYWARN("Exception caught while processing %s " #param1 "=%s code=%d message=%s\n", __FUNCTION__, param1.c_str(), err.getCode(), err.what());
+#define LOG_DEVICE_EXCEPTION2(param1,param2) MYWARN("Exception caught while processing %s " #param1 "=%s " #param2 "=%s code=%d message=%s\n", __FUNCTION__, param1.c_str(), param2.c_str(), err.getCode(), err.what());
+
+//this set of macros are used in the method handlers to make the code more consistent and easier to read
+#define vectorSet(v,s) \
+    if (find(begin(v), end(v), s) == end(v)) \
+        v.emplace_back(s);
+#define stringContains(s1,s2) \
+    (search(s1.begin(), s1.end(), s2, s2+strlen(s2), \
+        [](char c1, char c2){ \
+            return toupper(c1) == toupper(c2); \
+    }) != s1.end())
+#define returnResponse(success) \
+    response["success"] = success; \
+    MYTRACEMETHODFIN(); \
+    return (Core::ERROR_NONE); 
+#define returnIfWrongApiVersion(version)\
+    if(getApiVersionNumber() < version)\
+    {\
+        MYWARN("method %s not supported. version required=%u actual=%u\n", __FUNCTION__, version, getApiVersionNumber());\
+        returnResponse(false);\
+    }
+#define returnIfParamNotFound(param)\
+    if(param.empty())\
+    {\
+        MYWARN("method %s missing parameter %s\n", __FUNCTION__, #param);\
+        returnResponse(false);\
+    }
+
+#define sendNotify(event,params)\
+    string json;\
+    params.ToString(json);\
+    MYLOG("Notify %s %s\n", event, json.c_str());\
+    Notify(event,params);
+    
 #define IARM_CHECK(FUNC) \
   if ((res = FUNC) != IARM_RESULT_SUCCESS) { \
     MYLOG("DisplaySettings %s: %s\n", #FUNC, \
@@ -35,13 +77,11 @@
     MYLOG("DisplaySettings %s: success\n", #FUNC); \
   }
 
-//FIXME/TODO
-//Mark Rollins
-//I have put several //TODO/FIXME comments throughout that show areas that were a concern when transfering code from the ServiceManager's DisplaySettings to this Thunder plugin here.
-
 #define HDMI_HOT_PLUG_EVENT_CONNECTED 0
 
-#ifdef USE_IARM //TODO/FIXME - when would this be enabled ???
+#define USE_IARM //TODO(MROLLINS) - this was defined in servicemanager.pro for all STB builds.  Not sure where to put it except here for now
+
+#ifdef USE_IARM 
 namespace
 {
 	/**
@@ -109,7 +149,7 @@ namespace WPEFramework {
 
 		DisplaySettings::DisplaySettings()
 			: PluginHost::JSONRPC()
-			, m_apiVersionNumber((uint32_t)-1/*default max uint32_t so everything gets enabled*/)//FIXME/TODO Can't we access this from jsonrpc interface?
+			, m_apiVersionNumber((uint32_t)-1/*default max uint32_t so everything gets enabled*/)//TODO(MROLLINS) Can't we access this from jsonrpc interface?
 		{
     		logger = fopen("/opt/logs/ds.log", "w");
     		
@@ -135,8 +175,10 @@ namespace WPEFramework {
 			Register("getActiveInput", &DisplaySettings::getActiveInput, this);
 			Register("getTvHDRSupport", &DisplaySettings::getTvHDRSupport, this);
 			Register("getSettopHDRSupport", &DisplaySettings::getSettopHDRSupport, this);
-			Register("setVideoPortStandbyStatus", &DisplaySettings::setVideoPortStandbyStatus, this);
-			Register("getVideoPortStandbyStatus", &DisplaySettings::getVideoPortStandbyStatus, this);
+			Register("setVideoPortStatusInStandby", &DisplaySettings::setVideoPortStatusInStandby, this);
+			Register("getVideoPortStatusInStandby", &DisplaySettings::getVideoPortStatusInStandby, this);
+			
+			setApiVersionNumber(7);//TODO(MROLLINS) - this is suppose to be called from xre receiver in DisplaySettingsAPI ctor, but we need to get it from the jsonrpc client version
 		}
 		DisplaySettings::~DisplaySettings()
 		{
@@ -162,8 +204,8 @@ namespace WPEFramework {
 			Unregister("getActiveInput");
 			Unregister("getTvHDRSupport");
 			Unregister("getSettopHDRSupport");
-			Unregister("setVideoPortStandbyStatus");
-			Unregister("getVideoPortStandbyStatus");
+			Unregister("setVideoPortStatusInStandby");
+			Unregister("getVideoPortStatusInStandby");
 		}
 		const string DisplaySettings::Initialize(PluginHost::IShell* /* service */)
 		{
@@ -190,14 +232,14 @@ namespace WPEFramework {
             IARM_CHECK( IARM_Bus_Connect() );
             IARM_CHECK( IARM_Bus_RegisterEventHandler(IARM_BUS_DSMGR_NAME, IARM_BUS_DSMGR_EVENT_RX_SENSE, DisplResolutionHandler) );
             IARM_CHECK( IARM_Bus_RegisterEventHandler(IARM_BUS_DSMGR_NAME, IARM_BUS_DSMGR_EVENT_ZOOM_SETTINGS, DisplResolutionHandler) );
-            //TODO/FIXME localinput.cpp has PreChange guared with #if !defined(DISABLE_PRE_RES_CHANGE_EVENTS)
+            //TODO(MROLLINS) localinput.cpp has PreChange guared with #if !defined(DISABLE_PRE_RES_CHANGE_EVENTS)
             //Can we set it all the time from inside here and let localinput put guards around listening for our event?
             IARM_CHECK( IARM_Bus_RegisterCall(IARM_BUS_COMMON_API_ResolutionPreChange, ResolutionPreChange) );
             IARM_CHECK( IARM_Bus_RegisterCall(IARM_BUS_COMMON_API_ResolutionPostChange, ResolutionPostChange) );
             IARM_CHECK( IARM_Bus_RegisterEventHandler(IARM_BUS_DSMGR_NAME,IARM_BUS_DSMGR_EVENT_HDMI_HOTPLUG, dsHdmiEventHandler) );
-            //TODO/FIXME IS THE FOLLOWING REQUIRED -- localinput.cpp was doing it
             try
             {
+                //TODO(MROLLINS) this is probably per process so we either need to be running in our own process or be carefull no other plugin is calling it
                 device::Manager::Initialize();
                 MYLOG("device::Manager::Initialize success\n");
             }
@@ -206,7 +248,7 @@ namespace WPEFramework {
                 MYLOG("device::Manager::Initialize failed\n");            
             }
         }
-        //TODO/FIXME - we need to install crash handler to ensure DeinitializeIARM gets called
+        //TODO(MROLLINS) - we need to install crash handler to ensure DeinitializeIARM gets called
         void DisplaySettings::DeinitializeIARM()
         {
             MYTRACE();
@@ -215,9 +257,9 @@ namespace WPEFramework {
             IARM_CHECK( IARM_Bus_UnRegisterEventHandler(IARM_BUS_DSMGR_NAME, IARM_BUS_DSMGR_EVENT_ZOOM_SETTINGS) );
             IARM_CHECK( IARM_Bus_Disconnect() );
             IARM_CHECK( IARM_Bus_Term() );
-            //TODO/FIXME IS THE FOLLOWING REQUIRED -- localinput.cpp was doing it
             try
             {
+                //TODO(MROLLINS) this is probably per process so we either need to be running in our own process or be carefull no other plugin is calling it
                 device::Manager::DeInitialize();
                 MYLOG("device::Manager::DeInitialize success\n");
             }
@@ -253,7 +295,7 @@ namespace WPEFramework {
         void DisplaySettings::DisplResolutionHandler(const char *owner, IARM_EventId_t eventId, void *data, size_t len)
         {
             MYTRACE();        
-            //TODO/FIXME Receiver has this whole think guarded by #ifndef HEADLESS_GW
+            //TODO(MROLLINS) Receiver has this whole thing guarded by #ifndef HEADLESS_GW
             if (strcmp(owner,IARM_BUS_DSMGR_NAME) == 0)
             {
                 switch (eventId)
@@ -317,7 +359,7 @@ namespace WPEFramework {
             switch (eventId)
             {
             case IARM_BUS_DSMGR_EVENT_HDMI_HOTPLUG : 
-                //FIXME/TODO note that there are several services listening for the notifyHdmiHotPlugEvent ServiceManagerNotifier broadcast
+                //TODO(MROLLINS) note that there are several services listening for the notifyHdmiHotPlugEvent ServiceManagerNotifier broadcast
                 //So if DisplaySettings becomes the owner/originator of this, then those future thunder plugins need to listen to our event
                 //But of course, nothing is stopping any thunder plugin for listening to iarm event directly -- this is getting murky
                 {
@@ -328,7 +370,7 @@ namespace WPEFramework {
                         DisplaySettings::_instance->connectedVideoDisplaysUpdated(hdmi_hotplug_event);
                 }
                 break;
-                //FIXME/TODO localinput.cpp was also sending these and they were getting handled by services other then DisplaySettings.  Should DisplaySettings own these as well ?
+                //TODO(MROLLINS) localinput.cpp was also sending these and they were getting handled by services other then DisplaySettings.  Should DisplaySettings own these as well ?
                 /*    
             case IARM_BUS_DSMGR_EVENT_HDMI_IN_HOTPLUG : 
                 {
@@ -353,54 +395,6 @@ namespace WPEFramework {
                 break;
             }
         }        
-
-        #define CONTAINS(v,s) (find(begin(v), end(v), s) != end(v))
-        #define STRING_CONTAINS(s1,s2) \
-            (search(s1.begin(), s1.end(), s2.begin(), s2.end(), \
-                [](char c1, char c2){ \
-                    return toupper(c1) == toupper(c2); \
-            }) != s1.end())
-        //FIXME/TODO - need to do more then return ERROR_NONE
-        #define CHECK_API_VERSION(version)\
-            if(getApiVersionNumber() < version)\
-            {\
-                MYWARN("method %s not supported. version required=%u actual=%u\n", __FUNCTION__, version, getApiVersionNumber());\
-                return (Core::ERROR_NONE);\
-            }
-        #define CHECK_VALID_PARAMETER(param)\
-            if(param.empty())\
-            {\
-                MYWARN("method %s missing parameter %s\n", __FUNCTION__, #param);\
-                return (Core::ERROR_NONE);\
-            }
-        #define LOG_DEVICE_EXCEPTION0() MYWARN("Exception caught while processing %s code=%d message=%s\n", __FUNCTION__, err.getCode(), err.what());
-        #define LOG_DEVICE_EXCEPTION1(param1) MYWARN("Exception caught while processing %s " #param1 "=%s code=%d message=%s\n", __FUNCTION__, param1.c_str(), err.getCode(), err.what());
-        #define LOG_DEVICE_EXCEPTION2(param1,param2) MYWARN("Exception caught while processing %s " #param1 "=%s " #param2 "=%s code=%d message=%s\n", __FUNCTION__, param1.c_str(), param2.c_str(), err.getCode(), err.what());
-            
-        /* getParameterValue
-         * this will check for a parameter either as a map entry or the first item in an array "params"
-         * if neither places have a value, return the defaultValue.
-         * xre likes to stores parameters as a list inside an array with key "params" (e.g. parameters["params"].Add("HDMI0");
-         * however, we want to support more intuitive key=value params (e.g. parameters["videoDisplay"] = "HDMI0")
-         * so, we will check both places to ensure we are backward compatible with xre
-         */
-        const JsonValue& getParameterValue(const JsonObject& parameters, const char* key, uint32_t index=0)
-        {
-            static JsonValue empty;
-            if(parameters.HasLabel(key))
-                return parameters[key];
-            if(parameters["params"].Array().Length() > index)
-                return parameters["params"][index];
-            return empty;
-        }
-        string getParameterString(const JsonObject& parameters, const char* defaultValue, const char* key, uint32_t index=0)
-        {
-            const JsonValue& value = getParameterValue(parameters, key, index);
-            if(!value.Value().empty())
-                return value.Value();
-            else
-                return defaultValue;
-        }
         void setResponseArray(JsonObject& response, const char* key, const vector<string>& items)
         {
             JsonArray arr;
@@ -413,28 +407,27 @@ namespace WPEFramework {
         }
         uint32_t DisplaySettings::getQuirks(const JsonObject& parameters, JsonObject& response)
         {
-            MYTRACE();
+            MYTRACEMETHOD();
             JsonArray array;
             array.Add("XRE-7389");
             array.Add("DELIA-16415");
             array.Add("RDK-16024");
             array.Add("DELIA-18552");
             response["quirks"] = array;
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
-        
         uint32_t DisplaySettings::getConnectedVideoDisplays(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response: {"connectedVideoDisplays":["HDMI0"],"success":true}
             //this                          : {"connectedVideoDisplays":["HDMI0"]}
-            MYTRACE();
+            MYTRACEMETHOD();
             vector<string> connectedVideoDisplays;
             getConnectedVideoDisplaysHelper(connectedVideoDisplays);
             setResponseArray(response, "connectedVideoDisplays", connectedVideoDisplays);
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
         uint32_t DisplaySettings::getConnectedAudioPorts(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response: {"success":true,"connectedAudioPorts":["HDMI0"]}
-            MYTRACE();
+            MYTRACEMETHOD();
             vector<string> connectedAudioPorts;
             try
             {
@@ -445,10 +438,7 @@ namespace WPEFramework {
                     if (aPort.isConnected())
                     {
                         string portName = aPort.getName();
-                        if (!CONTAINS(connectedAudioPorts, portName))
-                        {
-                            connectedAudioPorts.emplace_back(portName);
-                        }
+                        vectorSet(connectedAudioPorts, portName);
                     }
                 }
             }
@@ -457,12 +447,12 @@ namespace WPEFramework {
                 LOG_DEVICE_EXCEPTION0();
             }             
             setResponseArray(response, "connectedAudioPorts", connectedAudioPorts);
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
         uint32_t DisplaySettings::getSupportedResolutions(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response:{"success":true,"supportedResolutions":["720p","1080i","1080p60"]}
-            MYTRACE();
-            string videoDisplay = getParameterString(parameters, "HDMI0", "videoDisplay");
+            MYTRACEMETHOD();
+            string videoDisplay = parameters.HasLabel("videoDisplay") ? parameters["videoDisplay"].String() : "HDMI0";
             vector<string> supportedResolutions;
             try
             {
@@ -471,10 +461,7 @@ namespace WPEFramework {
                 for (size_t i = 0; i < resolutions.size(); i++) {
                     const device::VideoResolution &resolution = resolutions.at(i);
                     string supportedResolution = resolution.getName();
-                    if (!CONTAINS(supportedResolutions,supportedResolution))
-                    {
-                        supportedResolutions.emplace_back(supportedResolution);
-                    }
+                    vectorSet(supportedResolutions,supportedResolution);
                 }
             }
             catch(const device::Exception& err)
@@ -482,11 +469,11 @@ namespace WPEFramework {
                 LOG_DEVICE_EXCEPTION1(videoDisplay);
             }
             setResponseArray(response, "supportedResolutions", supportedResolutions);
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
         uint32_t DisplaySettings::getSupportedVideoDisplays(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response: {"supportedVideoDisplays":["HDMI0"],"success":true}
-            MYTRACE();
+            MYTRACEMETHOD();
             vector<string> supportedVideoDisplays;
             try
             {
@@ -495,10 +482,7 @@ namespace WPEFramework {
                 {
                     device::VideoOutputPort &vPort = vPorts.at(i);
                     string videoDisplay = vPort.getName();
-                    if (!CONTAINS(supportedVideoDisplays, videoDisplay))
-                    {
-                        supportedVideoDisplays.emplace_back(videoDisplay);
-                    }
+                    vectorSet(supportedVideoDisplays, videoDisplay);
                 }
             }
             catch (const device::Exception& err)
@@ -506,13 +490,13 @@ namespace WPEFramework {
                 LOG_DEVICE_EXCEPTION0();
             }
             setResponseArray(response, "supportedVideoDisplays", supportedVideoDisplays);
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
         uint32_t DisplaySettings::getSupportedTvResolutions(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response:{"success":true,"supportedTvResolutions":["480i","480p","576i","720p","1080i","1080p"]}
-            MYTRACE();
-            CHECK_API_VERSION(6);
-            string videoDisplay = getParameterString(parameters, "HDMI0", "videoDisplay");
+            MYTRACEMETHOD();
+            returnIfWrongApiVersion(6);
+            string videoDisplay = parameters.HasLabel("videoDisplay") ? parameters["videoDisplay"].String() : "HDMI0";
             vector<string> supportedTvResolutions;
             try
             {
@@ -535,12 +519,12 @@ namespace WPEFramework {
                 LOG_DEVICE_EXCEPTION1(videoDisplay);
             }
             setResponseArray(response, "supportedTvResolutions", supportedTvResolutions);
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
         uint32_t DisplaySettings::getSupportedSettopResolutions(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response:{"success":true,"supportedSettopResolutions":["720p","1080i","1080p60"]}
-            MYTRACE();
-            CHECK_API_VERSION(6);
+            MYTRACEMETHOD();
+            returnIfWrongApiVersion(6);
             std::vector<string> supportedSettopResolutions;
             try
             {
@@ -550,11 +534,7 @@ namespace WPEFramework {
                 for (std::list<std::string>::const_iterator ci = resolutions.begin(); ci != resolutions.end(); ++ci)
                 {
                       string supportedResolution = *ci;
-                      if (!CONTAINS(supportedSettopResolutions, supportedResolution))
-                      {
-                           supportedSettopResolutions.emplace_back(supportedResolution);
-                           MYLOG("supportedSettopResolution:%s :", supportedResolution.c_str());
-                      }
+                      vectorSet(supportedSettopResolutions, supportedResolution);
                 }
             }
             catch(const device::Exception& err)
@@ -562,11 +542,11 @@ namespace WPEFramework {
                 LOG_DEVICE_EXCEPTION0();
             }             
             setResponseArray(response, "supportedSettopResolutions", supportedSettopResolutions);
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
         uint32_t DisplaySettings::getSupportedAudioPorts(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response: {"success":true,"supportedAudioPorts":["HDMI0"]}
-            MYTRACE();
+            MYTRACEMETHOD();
             vector<string> supportedAudioPorts;
             try
             {
@@ -575,10 +555,7 @@ namespace WPEFramework {
                 {
                     device::AudioOutputPort &vPort = aPorts.at(i);
                     string portName  = vPort.getName();
-                    if (!CONTAINS(supportedAudioPorts,portName))
-                    {
-                        supportedAudioPorts.emplace_back(portName);
-                    }
+                    vectorSet(supportedAudioPorts,portName);
                 }
             }
             catch(const device::Exception& err)
@@ -586,14 +563,13 @@ namespace WPEFramework {
                 LOG_DEVICE_EXCEPTION0();
             }
             setResponseArray(response, "supportedAudioPorts", supportedAudioPorts);
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
         uint32_t DisplaySettings::getSupportedAudioModes(const JsonObject& parameters, JsonObject& response)
-        {   //sample servicemanager response: {"success":true,"supportedAudioModes":["STEREO","PASSTHRU","AUTO (Dolby Digital 5.1)"]}
-            //FIXME/TODO ours               : {"supportedAudioModes":["STEREO","PASSTHRU"]}
-            MYTRACE();
-            CHECK_API_VERSION(2);
-            string audioPort = getParameterString(parameters, "", "audioPort");            
+        {   //sample response: {"success":true,"supportedAudioModes":["STEREO","PASSTHRU","AUTO (Dolby Digital 5.1)"]}
+            MYTRACEMETHOD();
+            returnIfWrongApiVersion(2);
+            string audioPort = parameters["audioPort"].String();
             vector<string> supportedAudioModes;
             try
             {
@@ -603,15 +579,9 @@ namespace WPEFramework {
                 for (size_t i = 0; i < vPorts.size(); i++) {
                     device::AudioOutputPort &aPort = vPorts.at(i).getAudioOutputPort();
                     for (size_t i = 0; i < aPort.getSupportedStereoModes().size(); i++) {
-                        if (audioPort.empty() || STRING_CONTAINS(aPort.getName(), audioPort))
+                        if (audioPort.empty() || stringContains(aPort.getName(), audioPort.c_str()))
                         {
                             string audioMode = aPort.getSupportedStereoModes().at(i).getName();
-                            
-                            //FIXME/TODO
-                            //MARK ROLLINS: when converting this to thunder plugin I encountered this getApiVersionNumber stuff
-                            //I'm not sure how this should be handled.
-                            //Should I add a set/getApiVersionNumber to the jsonrpc api ?
-                            //I will just hack in a getApiVersionNumber() which returns 5 for now until we can figure this part out
                             
                             // Starging Version 5, "Surround" mode is replaced by "Auto Mode"
                             if ((getApiVersionNumber() >= 5) && (strcasecmp(audioMode.c_str(),"SURROUND") == 0)) 
@@ -626,15 +596,12 @@ namespace WPEFramework {
                                 continue;
                             }
 
-                            if (!CONTAINS(supportedAudioModes,audioMode))
-                            {
-                                supportedAudioModes.emplace_back(audioMode);
-                            }
+                            vectorSet(supportedAudioModes,audioMode);
                         }
                     }
                 }
                 /* Version 5: Append Auto Mode for HDMI ports*/
-                if (getApiVersionNumber() >= 5 && (audioPort.empty() || STRING_CONTAINS(audioPort, string("HDMI"))))
+                if (getApiVersionNumber() >= 5 && (audioPort.empty() || stringContains(audioPort, "HDMI")))
                 {
                     device::VideoOutputPort vPort = device::VideoOutputPortConfig::getInstance().getPort("HDMI0");
                     int surroundMode = vPort.getDisplay().getSurroundMode();
@@ -656,7 +623,7 @@ namespace WPEFramework {
                         supportedAudioModes.emplace_back("AUTO (Stereo)");
                     }
                 }
-                if (getApiVersionNumber() >= 5 && (audioPort.empty() || STRING_CONTAINS(audioPort, string("SPDIF"))))
+                if (getApiVersionNumber() >= 5 && (audioPort.empty() || stringContains(audioPort, "SPDIF")))
                 {
                     if (HAL_hasSurround) {
                         supportedAudioModes.emplace_back("Surround");
@@ -668,11 +635,11 @@ namespace WPEFramework {
                 LOG_DEVICE_EXCEPTION1(audioPort);
             }
             setResponseArray(response, "supportedAudioModes", supportedAudioModes);
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
         uint32_t DisplaySettings::getZoomSetting(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response:
-            MYTRACE();
+            MYTRACEMETHOD();
             string zoomSetting = "unknown";
             try
             {
@@ -684,19 +651,21 @@ namespace WPEFramework {
             {
                 LOG_DEVICE_EXCEPTION0();
             }
-#ifdef USE_IARM //FIXME/TODO - when do we use this define
+#ifdef USE_IARM
             zoomSetting = iarm2svc(zoomSetting);
 #endif
             response["zoomSetting"] = zoomSetting;
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
         uint32_t DisplaySettings::setZoomSetting(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response:
-            MYTRACE();
-            string zoomSetting = getParameterString(parameters, "unknown", "zoomSetting");
+            MYTRACEMETHOD();
+            string zoomSetting = parameters["zoomSetting"].String();
+            returnIfParamNotFound(zoomSetting);
+            bool success = true;
             try
             {
-#ifdef USE_IARM //FIXME/TODO - when do we use this define
+#ifdef USE_IARM
                 zoomSetting = svc2iarm(zoomSetting);
 #endif
                 // TODO: why is this always the first one in the list? 
@@ -706,13 +675,15 @@ namespace WPEFramework {
             catch(const device::Exception& err)
             {
                 LOG_DEVICE_EXCEPTION1(zoomSetting);
-            }            
-            return (Core::ERROR_NONE);
+                success = false;
+            }
+            returnResponse(success);
         }
         uint32_t DisplaySettings::getCurrentResolution(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response:{"success":true,"resolution":"720p"}
-            MYTRACE();
-            string videoDisplay = getParameterString(parameters, "HDMI0", "videoDisplay");
+            MYTRACEMETHOD();
+            string videoDisplay = parameters.HasLabel("videoDisplay") ? parameters["videoDisplay"].String() : "HDMI0";
+            bool success = true;
             try
             {
                 device::VideoOutputPort &vPort = device::Host::getInstance().getVideoOutputPort(videoDisplay);
@@ -721,17 +692,18 @@ namespace WPEFramework {
             catch(const device::Exception& err)
             {
                 LOG_DEVICE_EXCEPTION1(videoDisplay);
-                return (Core::ERROR_NONE);
+                success = false;
             }
-            return (Core::ERROR_NONE);
+            returnResponse(success);
         }
         uint32_t DisplaySettings::setCurrentResolution(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response:
-            MYTRACE();
-            string videoDisplay = getParameterString(parameters, "", "videoDisplay", 0);//FIXME/TODO serviemanager didn't default to HDM0 here.  why can't we always default to HDMI0
-            string resolution = getParameterString(parameters, "", "resolution", 1);
-            CHECK_VALID_PARAMETER(videoDisplay);
-            CHECK_VALID_PARAMETER(resolution);
+            MYTRACEMETHOD();
+            string videoDisplay = parameters["videoDisplay"].String();
+            string resolution = parameters["resolution"].String();
+            returnIfParamNotFound(videoDisplay);
+            returnIfParamNotFound(resolution);
+            bool success = true;
             try
             {
                 device::VideoOutputPort &vPort = device::Host::getInstance().getVideoOutputPort(videoDisplay);
@@ -740,14 +712,14 @@ namespace WPEFramework {
             catch (const device::Exception& err)
             {
                 LOG_DEVICE_EXCEPTION2(videoDisplay, resolution);
-                return (Core::ERROR_NONE);
-            }                
-            return (Core::ERROR_NONE);
+                success = false;
+            }
+            returnResponse(success);
         }
         uint32_t DisplaySettings::getSoundMode(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response:{"success":true,"soundMode":"AUTO (Dolby Digital 5.1)"}
-            MYTRACE();
-            string videoDisplay = getParameterString(parameters, ""/*default to empty string and browse all ports*/, "videoDisplay", 0);
+            MYTRACEMETHOD();
+            string videoDisplay = parameters["videoDisplay"].String();//empty value will browse all ports
             bool validPortName = true;
 
             if (getApiVersionNumber() < 5)
@@ -757,11 +729,11 @@ namespace WPEFramework {
                 {
                     /* Empty is allowed */
                 }
-                else if (STRING_CONTAINS(videoDisplay,string("HDMI")))
+                else if (stringContains(videoDisplay,"HDMI"))
                 {
                     videoDisplay = "HDMI0";        
                 }
-                else if (STRING_CONTAINS(videoDisplay,string("COMPONENT")))
+                else if (stringContains(videoDisplay,"COMPONENT"))
                 {
                     videoDisplay = "SPDIF0";        
                 }
@@ -777,11 +749,11 @@ namespace WPEFramework {
                 {
                     /* Empty is allowed */
                 }
-                if (STRING_CONTAINS(videoDisplay,string("HDMI")))
+                if (stringContains(videoDisplay,"HDMI"))
                 {
                     videoDisplay = "HDMI0";        
                 }
-                else if (STRING_CONTAINS(videoDisplay,string("SPDIF")))
+                else if (stringContains(videoDisplay,"SPDIF"))
                 {
                     videoDisplay = "SPDIF0";        
                 }
@@ -909,22 +881,20 @@ namespace WPEFramework {
                 }
             }
 
-            MYLOG("getSoundMode: display = %s, mode = %s!\n", videoDisplay.c_str(), modeString.c_str());
-#ifdef USE_IARM //FIXME/TODO another case where USE_IARM is defined ..  Is this for certain platforms or what ?
+            MYWARN("getSoundMode: display = %s, mode = %s!\n", videoDisplay.c_str(), modeString.c_str());
+#ifdef USE_IARM
             modeString = iarm2svc(modeString);
 #endif
             response["soundMode"] = modeString;
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
         uint32_t DisplaySettings::setSoundMode(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response:
-            MYTRACE();
-            
-            string videoDisplay = getParameterString(parameters, ""/*default to empty string and set all ports*/, "videoDisplay", 0);
-            string soundMode = getParameterString(parameters, "", "soundMode", 1);//check at params[1]
-            if(soundMode.empty())//if videoDisplay was not passed soundMode would be at params[0]
-                soundMode = getParameterString(parameters, "", "soundMode", 0);
-            CHECK_VALID_PARAMETER(soundMode);
+            MYTRACEMETHOD();
+            string videoDisplay = parameters["videoDisplay"].String();//missing or empty string and we will set all ports
+            string soundMode = parameters["soundMode"].String();
+            returnIfParamNotFound(soundMode);
+            bool success = true;
             device::AudioStereoMode mode = device::AudioStereoMode::kStereo;  //default to stereo
             bool stereoAuto = false;
 
@@ -971,11 +941,11 @@ namespace WPEFramework {
                 {
                     /* Empty is allowed */
                 }
-                else if (STRING_CONTAINS(videoDisplay,string("HDMI")))
+                else if (stringContains(videoDisplay,"HDMI"))
                 {
                     videoDisplay = "HDMI0";        
                 }
-                else if (STRING_CONTAINS(videoDisplay,string("COMPONENT")))
+                else if (stringContains(videoDisplay,"COMPONENT"))
                 {
                     videoDisplay = "SPDIF0";        
                 }
@@ -991,11 +961,11 @@ namespace WPEFramework {
                 {
                     /* Empty is allowed */
                 }
-                else if (STRING_CONTAINS(videoDisplay,string("HDMI")))
+                else if (stringContains(videoDisplay,"HDMI"))
                 {
                     videoDisplay = "HDMI0";        
                 }
-                else if (STRING_CONTAINS(videoDisplay,string("SPDIF")))
+                else if (stringContains(videoDisplay,"SPDIF"))
                 {
                     videoDisplay = "SPDIF0";        
                 }
@@ -1007,16 +977,11 @@ namespace WPEFramework {
 
             if (!validPortName)
             { 
-                MYLOG("setSoundMode has Invalid port Name : display = %s, mode = %s!\n", videoDisplay.c_str(), soundMode.c_str());
-                //FIXME/TODO - we need to report an error.  
-                //We need the json rpc Error object so we can set a error string.
-                //We need to figure out which error code to return as well
-                return (Core::ERROR_GENERAL);
+                MYERROR("setSoundMode has Invalid port Name : display = %s, mode = %s!\n", videoDisplay.c_str(), soundMode.c_str());
+                returnResponse(false);
             }
 
-            MYLOG("setSoundMode: display = %s, mode = %s!\n", videoDisplay.c_str(), soundMode.c_str());
-
-            uint32_t returnCode = Core::ERROR_NONE;
+            MYWARN("setSoundMode: display = %s, mode = %s!\n", videoDisplay.c_str(), soundMode.c_str());
 
             try
             {
@@ -1043,8 +1008,7 @@ namespace WPEFramework {
                             }
                         }
                         else if (aPort.getType().getId() == device::AudioOutputPortType::kHDMI) {
-                            //FIXME/TODO -- this was actually logging an error -- check that all the error logs came over from original displaysetting.
-                            MYLOG("setSoundMode: reset auto on %s for mode = %s!\n", videoDisplay.c_str(), soundMode.c_str());
+                            MYERROR("setSoundMode: reset auto on %s for mode = %s!\n", videoDisplay.c_str(), soundMode.c_str());
                             aPort.setStereoAuto(false);
                         }
                         //TODO: if mode has not changed, we can skip the extra call
@@ -1058,7 +1022,7 @@ namespace WPEFramework {
                     params["videoDisplay"] = "HDMI0";
                     params["soundMode"] = soundMode;
                     JsonObject unusedResponse;
-                    returnCode = setSoundMode(params, response);
+                    setSoundMode(params, response);
                     if (getApiVersionNumber() < 5)
                     {
                         params["videoDisplay"] = "COMPONENT";
@@ -1074,23 +1038,19 @@ namespace WPEFramework {
             catch (const device::Exception& err)
             {
                 LOG_DEVICE_EXCEPTION0();
+                success = false;
             }
-            //FIXME/TODO -- so this is interesting.  ServiceManager had a settingChanged event that I guess handled settings from many services.
+            //TODO(MROLLINS) -- so this is interesting.  ServiceManager had a settingChanged event that I guess handled settings from many services.
             //Does that mean we need to save our setting back to another plugin that would own settings (and this settingsChanged event) ?
             //ServiceManager::getInstance()->saveSetting(this, SETTING_DISPLAY_SERVICE_SOUND_MODE, soundMode);
 
-            return returnCode;
+            returnResponse(success);
         }
-        //FIXME/TODO for readEDID and readHostEDID this convertion from std::vector<unsigned char> to json base64 looks a bit sketchy
-        //WPE has these methods to base64 to string and string to base64;
-        //void EXTERNAL ToString(const uint8_t object[], const uint16_t length, const bool padding, string& result);
-        //uint16_t EXTERNAL FromString(const string& newValue, uint8_t object[], uint16_t& length, const TCHAR* ignoreList = nullptr);
-        // need to ensure this is correct
         uint32_t DisplaySettings::readEDID(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response: {"EDID":"AP///////wBSYgYCAQEBAQEXAQOAoFp4CvCdo1VJmyYPR0ovzgCBgIvAAQEBAQEBAQEBAQEBAjqAGHE4LUBYLEUAQIRjAAAeZiFQsFEAGzBAcDYAQIRjAAAeAAAA/ABUT1NISUJBLVRWCiAgAAAA/QAXSw9EDwAKICAgICAgAbECAytxSpABAgMEBQYHICImCQcHEQcYgwEAAGwDDAAQADgtwBUVHx/jBQMBAR2AGHEcFiBYLCUAQIRjAACeAR0AclHQHiBuKFUAQIRjAAAejArQiiDgLRAQPpYAsIRDAAAYjAqgFFHwFgAmfEMAsIRDAACYAAAAAAAAAAAAAAAA9w=="
             //sample this thunder plugin    : {"EDID":"AP///////wBSYgYCAQEBAQEXAQOAoFp4CvCdo1VJmyYPR0ovzgCBgIvAAQEBAQEBAQEBAQEBAjqAGHE4LUBYLEUAQIRjAAAeZiFQsFEAGzBAcDYAQIRjAAAeAAAA/ABUT1NISUJBLVRWCiAgAAAA/QAXSw9EDwAKICAgICAgAbECAytxSpABAgMEBQYHICImCQcHEQcYgwEAAGwDDAAQADgtwBUVHx/jBQMBAR2AGHEcFiBYLCUAQIRjAACeAR0AclHQHiBuKFUAQIRjAAAejArQiiDgLRAQPpYAsIRDAAAYjAqgFFHwFgAmfEMAsIRDAACYAAAAAAAAAAAAAAAA9w"}
-            MYTRACE();
-            CHECK_API_VERSION(4);
+            MYTRACEMETHOD();
+            returnIfWrongApiVersion(4);
             std::vector<uint8_t> edidVec({'u','n','k','n','o','w','n' });
             try
             {
@@ -1116,13 +1076,13 @@ namespace WPEFramework {
                 MYERROR("readEDID size too large to use ToString base64 wpe api\n");
             string edidbase64;
             Core::ToString((uint8_t*)&edidVec[0], size, false, edidbase64);
-            response["EDID"] = edidbase64;            
-            return (Core::ERROR_NONE);
+            response["EDID"] = edidbase64;
+            returnResponse(true);
         }
         uint32_t DisplaySettings::readHostEDID(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response:
-            MYTRACE();
-            CHECK_API_VERSION(4);
+            MYTRACEMETHOD();
+            returnIfWrongApiVersion(4);
             std::vector<uint8_t> edidVec({'u','n','k','n','o','w','n' });
             try
             {
@@ -1142,13 +1102,13 @@ namespace WPEFramework {
                 MYLOG("readHostEDID size too large to use ToString base64 wpe api\n");
             Core::ToString((uint8_t*)&edidVec[0], size, false, base64String);
             response["EDID"] = base64String;
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
         uint32_t DisplaySettings::getActiveInput(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response:
-            MYTRACE();
-            CHECK_API_VERSION(5);
-            string videoDisplay = getParameterString(parameters, "HDMI0", "videoDisplay");
+            MYTRACEMETHOD();
+            returnIfWrongApiVersion(5);
+            string videoDisplay = parameters.HasLabel("videoDisplay") ? parameters["videoDisplay"].String() : "HDMI0";
             bool active = true;
             try
             {
@@ -1160,12 +1120,12 @@ namespace WPEFramework {
                 LOG_DEVICE_EXCEPTION1(videoDisplay);
             }  
             response["activeInput"] = JsonValue(active);
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
         uint32_t DisplaySettings::getTvHDRSupport(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response:{"standards":["none"],"supportsHDR":false}
-            MYTRACE();
-            CHECK_API_VERSION(6);
+            MYTRACEMETHOD();
+            returnIfWrongApiVersion(6);
             
             JsonArray hdrCapabilities;
             int capabilities = dsHDRSTANDARD_NONE;
@@ -1199,12 +1159,12 @@ namespace WPEFramework {
             {
                MYLOG("getTvHDRSupport:%s\n", hdrCapabilities[i].String());
             }
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
         uint32_t DisplaySettings::getSettopHDRSupport(const JsonObject& parameters, JsonObject& response)
         {   //sample servicemanager response:{"standards":["HDR10"],"supportsHDR":true}
-            MYTRACE();
-            CHECK_API_VERSION(6);
+            MYTRACEMETHOD();
+            returnIfWrongApiVersion(6);
             JsonArray hdrCapabilities;
             int capabilities = dsHDRSTANDARD_NONE;
 
@@ -1236,85 +1196,68 @@ namespace WPEFramework {
             {
                MYLOG("getSettopHDRSupport:%s\n", hdrCapabilities[i].String());
             }
-            return (Core::ERROR_NONE);
+            returnResponse(true);
         }
-        uint32_t DisplaySettings::setVideoPortStandbyStatus(const JsonObject& parameters, JsonObject& response)
+        uint32_t DisplaySettings::setVideoPortStatusInStandby(const JsonObject& parameters, JsonObject& response)
         {
-            MYTRACE();
-            CHECK_API_VERSION(7);
-            
-            string portname = getParameterString(parameters, ""/*if it comes back empty its invalid*/, "portName");
-            CHECK_VALID_PARAMETER(portname);            
-
-            string doEnable;
-            getParameterValue(parameters, "enable", 1).ToString(doEnable);
-            if(doEnable != "true" && doEnable != "false")
-            {
-                doEnable.clear();
-                CHECK_VALID_PARAMETER(doEnable);
-            }
-            /*
+            MYTRACEMETHOD();
+            returnIfWrongApiVersion(7);
+            string portname = parameters["portName"].String();
+            returnIfParamNotFound(portname); 
+            bool enabled = parameters["enabled"].Boolean();
             IARM_Bus_PWRMgr_StandbyVideoState_Param_t param;
-            param.isEnabled = doEnable == "true";
+            param.isEnabled = enabled;
             strncpy(param.port, portname.c_str(), PWRMGR_MAX_VIDEO_PORT_NAME_LENGTH);
+            bool success = true;
             if(IARM_RESULT_SUCCESS != IARM_Bus_Call(IARM_BUS_PWRMGR_NAME, IARM_BUS_PWRMGR_API_SetStandbyVideoState, &param, sizeof(param)))
             {
-                SVCLOG_ERROR("%s failed. Port: %s. enable:%d", METHOD_DISPLAY_SETTINGS_SET_VIDEO_PORT_STANDBY_STATUS.toUtf8().constData(), param.port, param.isEnabled);
-                setResult(false, returnResult, "Bus failure");
+                MYERROR("setVideoPortStatusInStandby failed. Port: %s. enable:%d\n", param.port, param.isEnabled);
+                response["error_message"] = "Bus failure";
+                success = false;
             }
             else if(0 != param.result)
             {
-                SVCLOG_ERROR("%s failed with result %d. Port: %s. enable:%d", METHOD_DISPLAY_SETTINGS_SET_VIDEO_PORT_STANDBY_STATUS.toUtf8().constData(), param.result, param.port, param.isEnabled);
-                setResult(false, returnResult, "internal error");
+                MYERROR("setVideoPortStatusInStandby failed with result %d. Port: %s. enable:%d\n", param.result, param.port, param.isEnabled);
+                response["error_message"] = "internal error";
+                success = false;
             }
-            else
-                setResult(true, returnResult);
-            */
-            return (Core::ERROR_NONE);
+            returnResponse(success);
         }
-        uint32_t DisplaySettings::getVideoPortStandbyStatus(const JsonObject& parameters, JsonObject& response)
+        uint32_t DisplaySettings::getVideoPortStatusInStandby(const JsonObject& parameters, JsonObject& response)
         {
-            MYTRACE();
-            CHECK_API_VERSION(7);
-            
-            string portname = getParameterString(parameters, "", "portName");
-            CHECK_VALID_PARAMETER(portname);              
-            /*
+            MYTRACEMETHOD();
+            returnIfWrongApiVersion(7);
+            string portname = parameters["portName"].String();
+            returnIfParamNotFound(portname);            
+            bool success = true;
             IARM_Bus_PWRMgr_StandbyVideoState_Param_t param;
-            strncpy(param.port, portname.toUtf8().constData(), PWRMGR_MAX_VIDEO_PORT_NAME_LENGTH);
+            strncpy(param.port, portname.c_str(), PWRMGR_MAX_VIDEO_PORT_NAME_LENGTH);
             if(IARM_RESULT_SUCCESS != IARM_Bus_Call(IARM_BUS_PWRMGR_NAME, IARM_BUS_PWRMGR_API_GetStandbyVideoState, &param, sizeof(param)))
             {
-                //SVCLOG_ERROR("%s failed. Port: %s. enable:%d", METHOD_DISPLAY_SETTINGS_GET_VIDEO_PORT_STANDBY_STATUS.toUtf8().constData(), param.port, param.isEnabled);
-                ///setResult(false, returnResult, "Bus failure");
+                MYERROR("getVideoPortStatusInStandby failed. Port: %s. enable:%d\n", param.port, param.isEnabled);
+                response["error_message"] = "Bus failure";
+                success = false;
             }
             else if(0 != param.result)
             {
-                //SVCLOG_ERROR("%s failed with result %d. Port: %s. enable:%d", METHOD_DISPLAY_SETTINGS_GET_VIDEO_PORT_STANDBY_STATUS.toUtf8().constData(), param.result, param.port, param.isEnabled);
-                //setResult(false, returnResult, "internal error");
+                MYERROR("getVideoPortStatusInStandby failed with result %d. Port: %s. enable:%d\n", param.result, param.port, param.isEnabled);
+                response["error_message"] = "internal error";
+                success = false;
             }
             else
             {
-                if(0 == param.isEnabled)
-                {
-                    MYLOG("video port is disabled.");
-                    response["videoPortStatusInStandby"] = false;
-                }
-                else
-                {
-                    MYLOG("video port is enabled.");
-                    response["videoPortStatusInStandby"] = true;
-                }
-                //setResult(true, returnResult);
+                bool enabled(0 != param.isEnabled);
+                MYLOG("video port is %s\n", enabled ? "enabled" : "disabled");
+                response["videoPortStatusInStandby"] = enabled;
             }
-            */
-            return (Core::ERROR_NONE);
+            returnResponse(success);
         }
         //End methods
         //Begin events
         void DisplaySettings::resolutionPreChange()
         {
             MYTRACE();
-            Notify("resolutionChanged", string());
+            sendNotify("resolutionPreChange", JsonObject());
         }
         void DisplaySettings::resolutionChanged(int width, int height)
         {
@@ -1339,7 +1282,7 @@ namespace WPEFramework {
                 }
                 if (!resolution.empty())
                 {
-                    if (STRING_CONTAINS(display,string("HDMI")))
+                    if (stringContains(display,"HDMI"))
                     {
                         // only report first HDMI connected device is HDMI is connected
                         JsonObject params;
@@ -1347,7 +1290,7 @@ namespace WPEFramework {
                         params["height"] = height;
                         params["videoDisplayType"] = display;
                         params["resolution"] = resolution;
-                        Notify("resolutionChanged", params);                        
+                        sendNotify("resolutionChanged", params);                        
                         return;
                     }
                     else if (!firstResolutionSet)
@@ -1366,7 +1309,7 @@ namespace WPEFramework {
                 params["height"] = height;
                 params["videoDisplayType"] = firstDisplay;
                 params["resolution"] = firstResolution;
-                Notify("resolutionChanged", params);                        
+                sendNotify("resolutionChanged", params);                        
             }
         }
         void DisplaySettings::zoomSettingUpdated(const string& zoomSetting)
@@ -1376,7 +1319,7 @@ namespace WPEFramework {
             JsonObject params;
             params["zoomSetting"] = zoomSetting;
             params["videoDisplayType"] = "all";
-            Notify("zoomSettingUpdated", params);
+            sendNotify("zoomSettingUpdated", params);
         }
         void DisplaySettings::activeInputChanged(bool activeInput)
         {
@@ -1385,7 +1328,7 @@ namespace WPEFramework {
                 return;
             JsonObject params;
             params["activeInput"] = activeInput;
-            Notify("activeInputChanged", params);
+            sendNotify("activeInputChanged", params);
         }
         void DisplaySettings::connectedVideoDisplaysUpdated(int hdmiHotPlugEvent)
         {
@@ -1408,7 +1351,7 @@ namespace WPEFramework {
 
                 JsonObject params;
                 params["connectedVideoDisplays"] = connectedDisplays;
-                Notify("connectedVideoDisplaysUpdated", params);
+                sendNotify("connectedVideoDisplaysUpdated", params);
             }
             previousStatus = hdmiHotPlugEvent;
         }
@@ -1432,9 +1375,9 @@ namespace WPEFramework {
                             connectedDisplays.emplace_back(displayName);
                             break;
                         }
-                        else if (!CONTAINS(connectedDisplays, displayName))
+                        else
                         {
-                            connectedDisplays.emplace_back(displayName);
+                            vectorSet(connectedDisplays, displayName);
                         }
                     }
                 }
@@ -1446,53 +1389,56 @@ namespace WPEFramework {
         }
         uint32_t DisplaySettings::getApiVersionNumber()
         {
-            MYTRACE();
             return m_apiVersionNumber;
         }
         void DisplaySettings::setApiVersionNumber(unsigned int apiVersionNumber)
         {
-            MYTRACE();
+            MYWARN("setApiVersionNumber enter version=%d", (int)apiVersionNumber);
+            
             if (apiVersionNumber <= 4)
             {
-                try
+              try
+              {
+                device::AudioOutputPort aPort = device::Host::getInstance().getAudioOutputPort("HDMI0");
+
+                MYWARN("setApiVersionNumber aPort.getStereoAuto()=%d", (int)aPort.getStereoAuto());
+                if (aPort.getStereoAuto()) 
                 {
-                    device::AudioOutputPort aPort = device::Host::getInstance().getAudioOutputPort("HDMI0");
-
-                    if (aPort.getStereoAuto()) 
-                    {
-                        MYLOG("DS version check: AUTO is set, resetting");
-                        aPort.setStereoAuto(false);
-                        aPort.setStereoMode(device::AudioStereoMode::kSurround);
-                    }
-
-                    device::AudioStereoMode mode = aPort.getStereoMode(/*from persistent*/true);
-
-                    if (mode == device::AudioStereoMode::kPassThru) 
-                    {
-                        MYLOG("DS version check: PASSTHRU is set, resetting");
-                        aPort.setStereoAuto(false);
-                        aPort.setStereoMode(device::AudioStereoMode::kSurround);
-                        MYLOG("DS version 4 set with Audio Surround");
-                    }
+                    MYWARN(" setApiVersionNumber DS version check: AUTO is set, resetting");
+                    aPort.setStereoAuto(false);
+                    aPort.setStereoMode(device::AudioStereoMode::kSurround);
                 }
-                catch (const device::Exception& err)
+                
+
+                device::AudioStereoMode mode = aPort.getStereoMode(/*from persistent*/true);
+
+                MYWARN("setApiVersionNumber kPassThru=%d", (int)(mode == device::AudioStereoMode::kPassThru));
+
+                if (mode == device::AudioStereoMode::kPassThru) 
                 {
-                    MYERROR("exception caught set surround, now try stereo");
-                    try
-                    {
-                        device::AudioOutputPort aPort = device::Host::getInstance().getAudioOutputPort("HDMI0");
-                        aPort.setStereoAuto(false);
-                        aPort.setStereoMode(device::AudioStereoMode::kStereo);
-                        MYWARN("DS version 4 set with Audio stereo");
-                    }
-                    catch (const device::Exception& err)
-                    {
-                        MYERROR("exception caught set stereo");
-                    }
+                    MYWARN(" setApiVersionNumberDS version check: PASSTHRU is set, resetting");
+                    aPort.setStereoAuto(false);
+                    aPort.setStereoMode(device::AudioStereoMode::kSurround);
+                    MYWARN("DS version 4 set with Audio Surround");
                 }
+              }
+              catch (const device::Exception& err)
+              {
+                  LOG_DEVICE_EXCEPTION0();              
+                  MYERROR(" setApiVersionNumber exception caught set surround, now try stereo");
+                  try {
+                      device::AudioOutputPort aPort = device::Host::getInstance().getAudioOutputPort("HDMI0");
+                      aPort.setStereoAuto(false);
+                      aPort.setStereoMode(device::AudioStereoMode::kStereo);
+                      MYWARN("DS version 4 set with Audio stereo");
+                   }
+                  catch (const device::Exception& err) {
+                      LOG_DEVICE_EXCEPTION0();
+                      MYERROR("exception caught set stereo");
+                  }
+               }
             }
             m_apiVersionNumber = apiVersionNumber;
         }                                                    
 	} // namespace Plugin
-	
 } // namespace WPEFramework
