@@ -161,7 +161,7 @@ namespace Plugin
         Pins::iterator index = _pins.begin();
 
         while ((index != _pins.end()) && (result == nullptr)) {
-            if (index->first->Identifier() == id) {
+            if ((index->first->Identifier() & 0xFFFF) == id) {
                 result = index->first;
                 result->AddRef();
             } else {
