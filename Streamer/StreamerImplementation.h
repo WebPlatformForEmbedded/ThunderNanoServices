@@ -1,9 +1,8 @@
-#ifndef __LINEARBROADCAST_IMPLEMENTATION_H
-#define __LINEARBROADCAST_IMPLEMENTATION_H
+#pragma once
 
-#include "Frontend.h"
 #include "Module.h"
 #include <interfaces/IStream.h>
+#include "Administrator.h"
 
 namespace WPEFramework {
 
@@ -21,8 +20,11 @@ namespace Plugin {
             ExternalAccess& operator=(const ExternalAccess&) = delete;
 
         public:
-            ExternalAccess(const Core::NodeId& source, Exchange::IPlayer* parentInterface, const string& proxyStubPath)
-                : RPC::Communicator(source, Core::ProxyType<RPC::InvokeServerType<8, 1>>::Create(), proxyStubPath)
+            ExternalAccess(const Core::NodeId& source,
+                Exchange::IPlayer* parentInterface,
+                const string& proxyStubPath,
+                const Core::ProxyType<RPC::InvokeServer> & engine)
+                : RPC::Communicator(source, proxyStubPath, Core::ProxyType<Core::IIPCServer>(engine))
                 , _parentInterface(parentInterface)
             {
             }
@@ -58,7 +60,7 @@ namespace Plugin {
     public:
         StreamerImplementation()
             : _adminLock()
-            , _administrator()
+            , _administrator(Player::Implementation::Administrator::Instance())
             , _externalAccess(nullptr)
         {
         }
@@ -84,10 +86,9 @@ namespace Plugin {
 
     private:
         mutable Core::CriticalSection _adminLock;
-        Player::Implementation::Administrator _administrator;
+        Player::Implementation::Administrator& _administrator;
         ExternalAccess* _externalAccess;
     };
 }
 }
 
-#endif //__LINEARBROADCAST_IMPLEMENTATION_H

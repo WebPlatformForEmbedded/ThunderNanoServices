@@ -43,10 +43,14 @@ namespace Plugin {
             ExternalAccess& operator=(const ExternalAccess&) = delete;
 
         public:
-            ExternalAccess(const Core::NodeId& source, ::OCDM::IAccessorOCDM* parentInterface)
-                : RPC::Communicator(source, Core::ProxyType<RPC::InvokeServerType<4, 1>>::Create(), _T(""))
+            ExternalAccess(
+                const Core::NodeId& source, 
+                ::OCDM::IAccessorOCDM* parentInterface, 
+                const Core::ProxyType<RPC::InvokeServer> & engine)
+                : RPC::Communicator(source, _T(""), Core::ProxyType<Core::IIPCServer>(engine))
                 , _parentInterface(parentInterface)
             {
+                engine->Announcements(Announcement());
                 Open(Core::infinite);
             }
             ~ExternalAccess()
@@ -63,7 +67,7 @@ namespace Plugin {
                 if (((versionId == 1) || (versionId == static_cast<uint32_t>(~0))) && ((interfaceId == ::OCDM::IAccessorOCDM::ID) || (interfaceId == Core::IUnknown::ID))) {
                     // Reference count our parent
                     _parentInterface->AddRef();
-
+                    TRACE(Trace::Information, ("OCDM interface aquired => %p", this));
                     // Allright, respond with the interface.
                     result = _parentInterface;
                 }
@@ -134,7 +138,7 @@ namespace Plugin {
 
                         if (actualFile.compare(0, baseLength, BufferFileName) == 0) {
                             // Than the last part is the number..
-                            uint8_t number(Core::NumberType<uint8_t>(&(actualFile.c_str()[baseLength]), actualFile.length() - baseLength).Value());
+                            uint8_t number(Core::NumberType<uint8_t>(&(actualFile.c_str()[baseLength]), static_cast<uint32_t>(actualFile.length() - baseLength)).Value());
 
                             if (number <= (sizeof(_occupation) * 8)) {
                                 _adminLock.Lock();
@@ -235,9 +239,6 @@ namespace Plugin {
                                     // Adjust the buffer on our sied (this process) on what we will write back
                                     SetBuffer(0, clearContentSize, clearContent);
                                 }
-
-                                // Store the status we have for the other side.
-                                Status(static_cast<uint32_t>(cr));
 
                                 // Store the status we have for the other side.
                                 Status(static_cast<uint32_t>(cr));
@@ -669,15 +670,14 @@ namespace Plugin {
 
                 CDMi::IMediaKeys* system = _parent.KeySystem(keySystem);
 
-                if (system == nullptr) {
-                    session = nullptr;
-                } else {
+                session = nullptr;
+                if (system != nullptr) {
                     CDMi::IMediaKeySession* sessionInterface = nullptr;
                     CommonEncryptionData keyIds(initData, initDataLength);
 
                     // OKe we got a buffer machanism to transfer the raw data, now create
                     // the session.
-                    if ((session == nullptr) && (system->CreateMediaKeySession(keySystem, licenseType, initDataType.c_str(), initData, initDataLength, CDMData, CDMDataLength, &sessionInterface) == 0)) {
+                    if (system->CreateMediaKeySession(keySystem, licenseType, initDataType.c_str(), initData, initDataLength, CDMData, CDMDataLength, &sessionInterface) == 0) {
 
                         if (sessionInterface != nullptr) {
 
@@ -1063,7 +1063,7 @@ namespace Plugin {
 
                             system->DestroyMediaKeySession(mediaKeySession);
                         } else {
-                            TRACE_L1("No system to handle session = %x\n", session);
+                            TRACE_L1("No system to handle session = %p\n", session);
                         }
                     }
                 }
@@ -1259,7 +1259,7 @@ namespace Plugin {
                         }
                     }
 
-                    //now handle the configiguration
+                    //now handle the configuration
                     const string configuration(index.Current().Configuration.Value());
                     if (configuration.empty() == false && factory != factories.end()) {
 
@@ -1273,7 +1273,7 @@ namespace Plugin {
             }
 
             _entryPoint = Core::Service<AccessorOCDM>::Create<::OCDM::IAccessorOCDM>(this, config.SharePath.Value(), config.ShareSize.Value());
-            _service = new ExternalAccess(Core::NodeId(config.Connector.Value().c_str()), _entryPoint);
+            _service = new ExternalAccess(Core::NodeId(config.Connector.Value().c_str()), _entryPoint, Core::ProxyType<RPC::InvokeServer>::Create());
 
             if (_service != nullptr) {
 

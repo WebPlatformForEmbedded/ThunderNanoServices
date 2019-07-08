@@ -1,6 +1,4 @@
 #include "StreamerImplementation.h"
-#include "Frontend.h"
-#include "PlayerImplementation.h"
 
 namespace WPEFramework {
 
@@ -35,7 +33,7 @@ namespace Plugin {
 
         config.FromString(service->ConfigLine());
 
-        _externalAccess = new ExternalAccess(Core::NodeId(config.Connector.Value().c_str()), this, service->ProxyStubPath());
+        _externalAccess = new ExternalAccess(Core::NodeId(config.Connector.Value().c_str()), this, service->ProxyStubPath(), Core::ProxyType<RPC::InvokeServer>::Create());
         result = _externalAccess->Open(RPC::CommunicationTimeOut);
         if (result != Core::ERROR_NONE) {
             TRACE(Trace::Information, (_T("Could not open StreamerImplementation server.")));
@@ -67,11 +65,12 @@ namespace Plugin {
 
         _adminLock.Lock();
 
-        result = _administrator.Aquire(streamType);
+        result = _administrator.Acquire(streamType);
 
         _adminLock.Unlock();
 
         return (result);
     }
 }
-} // namespace WPEFramework::Plugin
+
+}

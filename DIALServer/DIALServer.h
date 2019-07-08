@@ -8,7 +8,7 @@
 namespace WPEFramework {
 namespace Plugin {
 
-    class DIALServer : public PluginHost::IPlugin, public PluginHost::IWeb {
+    class DIALServer : public PluginHost::IPlugin, public PluginHost::IWeb, public PluginHost::JSONRPC {
     public:
         class Config : public Core::JSON::Container {
         public:
@@ -71,19 +71,27 @@ namespace Plugin {
                 : Core::JSON::Container()
                 , Name()
                 , Model()
-                , Manufacturer()
                 , Description()
+                , ModelNumber()
+                , ModelURL()
+                , Manufacturer()
+                , ManufacturerURL()
+                , SerialNumber()
+                , UPC()
                 , Interface()
-                , ServerURL()
                 , WebServer()
                 , SwitchBoard()
             {
                 Add(_T("interface"), &Interface);
                 Add(_T("name"), &Name);
                 Add(_T("model"), &Model);
-                Add(_T("manufacturer"), &Manufacturer);
                 Add(_T("description"), &Description);
-                Add(_T("serverurl"), &ServerURL);
+                Add(_T("modelnumber"), &ModelNumber);
+                Add(_T("modelurl"), &ModelURL);
+                Add(_T("manufacturer"), &Manufacturer);
+                Add(_T("manufacturerurl"), &ManufacturerURL);
+                Add(_T("serialnumber"), &SerialNumber);
+                Add(_T("upc"), &UPC);
                 Add(_T("webserver"), &WebServer);
                 Add(_T("switchboard"), &SwitchBoard);
                 Add(_T("apps"), &Apps);
@@ -95,13 +103,16 @@ namespace Plugin {
         public:
             Core::JSON::String Name;
             Core::JSON::String Model;
-            Core::JSON::String Manufacturer;
             Core::JSON::String Description;
+            Core::JSON::String ModelNumber;
+            Core::JSON::String ModelURL;
+            Core::JSON::String Manufacturer;
+            Core::JSON::String ManufacturerURL;
+            Core::JSON::String SerialNumber;
+            Core::JSON::String UPC;
             Core::JSON::String Interface;
-            Core::JSON::String ServerURL;
             Core::JSON::String WebServer;
             Core::JSON::String SwitchBoard;
-            Core::JSON::Boolean Notify;
             Core::JSON::ArrayType<App> Apps;
         };
 
@@ -122,7 +133,7 @@ namespace Plugin {
         struct IApplicationFactory {
             virtual ~IApplicationFactory() {}
 
-            virtual IApplication* Create(PluginHost::IShell* shell, const Config::App& config) = 0;
+            virtual IApplication* Create(PluginHost::IShell* shell, const Config::App& config, DIALServer* parent) = 0;
         };
 
         class Default : public Plugin::DIALServer::IApplication {
@@ -132,14 +143,17 @@ namespace Plugin {
             Default& operator=(const Default&) = delete;
 
         public:
-            Default(PluginHost::IShell* service, const Plugin::DIALServer::Config::App& config)
+            Default(PluginHost::IShell* service, const Plugin::DIALServer::Config::App& config, DIALServer* parent)
                 : _switchBoard(nullptr)
                 , _service(service)
                 , _callsign(config.Callsign.IsSet() == true ? config.Callsign.Value() : config.Name.Value())
                 , _hasAllowStop(config.AllowStop.Value())
                 , _passiveMode(config.Callsign.IsSet() == false)
                 , _isRunning(false)
+                , _parent(parent)
             {
+                ASSERT(_parent != nullptr);
+
                 // The switchboard should be located on the Controller. If the Switchboard is configured
                 // it should always result in an non-null ptr.
                 if (_passiveMode == false) {
@@ -184,6 +198,7 @@ namespace Plugin {
                 if (_passiveMode == true) {
                     const string message(_T("{ \"application\": \"") + _callsign + _T("\", \"request\":\"start\", \"data\":\"" + data + "\" }"));
                     _service->Notify(message);
+                    _parent->event_start(_callsign, data);
                 } else {
                     if (_switchBoard != nullptr) {
                         printf("%s:%s:%d -Switchboard Mode\n", __FILE__, __func__, __LINE__);
@@ -194,7 +209,6 @@ namespace Plugin {
                     }
 
                     if (IsRunning() == true) {
-                        printf("%s:%s:%d\n", __FILE__, __func__, __LINE__);
                         Started(data);
                     }
                 }
@@ -204,6 +218,7 @@ namespace Plugin {
                 if (_passiveMode == true) {
                     const string message(_T("{ \"application\": \"") + _callsign + _T("\", \"request\":\"stop\", \"data\":\"" + data + "\"}"));
                     _service->Notify(message);
+                    _parent->event_stop(_callsign, data);
                 } else {
                     Stopped(data);
 
@@ -265,6 +280,7 @@ namespace Plugin {
             bool _hasAllowStop;
             bool _passiveMode;
             bool _isRunning;
+            DIALServer* _parent;
         };
 
     private:
@@ -284,9 +300,9 @@ namespace Plugin {
             virtual ~ApplicationFactoryType() {}
 
         public:
-            virtual IApplication* Create(PluginHost::IShell* shell, const Config::App& config)
+            virtual IApplication* Create(PluginHost::IShell* shell, const Config::App& config, DIALServer* parent)
             {
-                return (new HANDLER(shell, config));
+                return (new HANDLER(shell, config, parent));
             }
         };
         class EXTERNAL Protocol {
@@ -420,29 +436,31 @@ namespace Plugin {
             AppInformation& operator=(const AppInformation&) = delete;
 
         public:
-            AppInformation(PluginHost::IShell* service, const Config::App& info)
+            AppInformation(PluginHost::IShell* service, const Config::App& info, DIALServer* parent)
                 : _lock()
                 , _name(info.Name.Value())
                 , _url(info.URL.Value())
                 , _application(nullptr)
             {
+                ASSERT(parent != nullptr);
+
                 if ((info.Handler.IsSet() == true) && (info.Handler.Value().empty() == false)) {
                     std::map<string, IApplicationFactory*>::iterator index(_applicationFactory.find(info.Handler.Value()));
                     if (index != _applicationFactory.end()) {
-                        _application = index->second->Create(service, info);
+                        _application = index->second->Create(service, info, parent);
                     }
                 }
 
                 if (_application == nullptr) {
                     std::map<string, IApplicationFactory*>::iterator index(_applicationFactory.find(info.Name.Value()));
                     if (index != _applicationFactory.end()) {
-                        _application = index->second->Create(service, info);
+                        _application = index->second->Create(service, info, parent);
                     }
                 }
 
                 if (_application == nullptr) {
                     // since we still have nothing, fall back to the default
-                    _application = new DIALServer::Default(service, info);
+                    _application = new DIALServer::Default(service, info, parent);
                 }
             }
             ~AppInformation()
@@ -495,7 +513,6 @@ namespace Plugin {
             }
             inline static void Announce(const string& name, IApplicationFactory* factory)
             {
-
                 ASSERT(AppInformation::_applicationFactory.find(name) == AppInformation::_applicationFactory.end());
 
                 AppInformation::_applicationFactory.insert(std::pair<string, IApplicationFactory*>(name, factory));
@@ -708,6 +725,7 @@ namespace Plugin {
         BEGIN_INTERFACE_MAP(DIALServer)
         INTERFACE_ENTRY(PluginHost::IPlugin)
         INTERFACE_ENTRY(PluginHost::IWeb)
+        INTERFACE_ENTRY(PluginHost::IDispatcher)
         END_INTERFACE_MAP
 
     public:
@@ -751,6 +769,10 @@ namespace Plugin {
         void Deactivated(Exchange::ISwitchBoard* switchBoard);
         void StartApplication(const Web::Request& request, Core::ProxyType<Web::Response>& response, AppInformation& app);
         void StopApplication(const Web::Request& request, Core::ProxyType<Web::Response>& response, AppInformation& app);
+
+        //JsonRpc
+        void event_start(const string& application, const string& parameters);
+        void event_stop(const string& application, const string& parameters);
 
     private:
         Core::CriticalSection _adminLock;

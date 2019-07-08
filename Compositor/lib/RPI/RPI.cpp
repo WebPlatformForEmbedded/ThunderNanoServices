@@ -19,11 +19,18 @@ namespace Plugin {
             ExternalAccess& operator=(const ExternalAccess&) = delete;
 
         public:
-            ExternalAccess(CompositorImplementation& parent, const Core::NodeId& source, const string& proxyStubPath)
-                : RPC::Communicator(source, Core::ProxyType<RPC::InvokeServerType<16, 1>>::Create(), proxyStubPath.empty() == false ? Core::Directory::Normalize(proxyStubPath) : proxyStubPath)
+            ExternalAccess(
+                CompositorImplementation& parent, 
+                const Core::NodeId& source, 
+                const string& proxyStubPath, 
+                const Core::ProxyType<RPC::InvokeServer>& handler)
+                : RPC::Communicator(source,  proxyStubPath.empty() == false ? Core::Directory::Normalize(proxyStubPath) : proxyStubPath, Core::ProxyType<Core::IIPCServer>(handler))
                 , _parent(parent)
             {
                 uint32_t result = RPC::Communicator::Open(RPC::CommunicationTimeOut);
+
+                handler->Announcements(Announcement());
+
                 if (result != Core::ERROR_NONE) {
                     TRACE(Trace::Error, (_T("Could not open RPI Compositor RPCLink server. Error: %s"), Core::NumberType<uint32_t>(result).Text()));
                 } else {
@@ -33,7 +40,7 @@ namespace Plugin {
                 }
             }
 
-            ~ExternalAccess() override = default;
+            virtual ~ExternalAccess() override = default;
 
         private:
             void Offer(Core::IUnknown* element, const uint32_t interfaceID) override
@@ -58,7 +65,8 @@ namespace Plugin {
         CompositorImplementation()
             : _adminLock()
             , _service(nullptr)
-            , _externalAccess()
+            , _engine()
+            , _externalAccess(nullptr)
             , _observers()
             , _clients()
         {
@@ -66,8 +74,9 @@ namespace Plugin {
 
         ~CompositorImplementation()
         {
-            if (_service != nullptr) {
-                _service->Release();
+            if (_externalAccess != nullptr) {
+                delete _externalAccess;
+                _engine.Release();
             }
         }
 
@@ -122,17 +131,21 @@ namespace Plugin {
         {
             uint32_t result = Core::ERROR_NONE;
             _service = service;
-            _service->AddRef();
 
             string configuration(service->ConfigLine());
             Config config;
             config.FromString(service->ConfigLine());
 
-            _externalAccess.reset(new ExternalAccess(*this, Core::NodeId(config.Connector.Value().c_str()), service->ProxyStubPath()));
+            _engine = Core::ProxyType<RPC::InvokeServer>::Create();
+            _externalAccess = new ExternalAccess(*this, Core::NodeId(config.Connector.Value().c_str()), service->ProxyStubPath(), _engine);
 
             if (_externalAccess->IsListening() == true) {
                 PlatformReady();
+                
             } else {
+                delete _externalAccess;
+                _externalAccess = nullptr;
+                _engine.Release();
                 TRACE(Trace::Error, (_T("Could not report PlatformReady as there was a problem starting the Compositor RPC %s"), _T("server")));
                 result = Core::ERROR_OPENING_FAILED;
             }
@@ -149,7 +162,7 @@ namespace Plugin {
             _observers.push_back(notification);
             auto index(_clients.begin());
             while (index != _clients.end()) {
-                notification->Attached(index->second.clientInterface);
+                notification->Attached(index->first, index->second.clientInterface);
                 index++;
             }
             _adminLock.Unlock();
@@ -290,7 +303,7 @@ namespace Plugin {
                     TRACE(Trace::Information, (_T("Added client %s."), name.c_str()));
 
                     for (auto&& index : _observers) {
-                        index->Attached(client);
+                        index->Attached(name, client);
                     }
 
                     client->AddRef(); // for call to RecalculateZOrder
@@ -312,12 +325,12 @@ namespace Plugin {
             while (it != _clients.end()) {
                 if (it->second.clientInterface == client) {
                     TRACE(Trace::Information, (_T("Removed client %s."), it->first.c_str()));
-                    // for( auto index : _observers) {
-                    //     // note as we have the name here, we could more efficiently pass the name to the 
-                    //     // caller as it is not allowed to get it from the pointer passes, but we are going 
-                    //     // to restructure the interface anyway
-                    //     index->Detached(it->second.clientInterface); 
-                    // }
+                    for (auto index : _observers) {
+                        // note as we have the name here, we could more efficiently pass the name to the
+                        // caller as it is not allowed to get it from the pointer passes, but we are going
+                        // to restructure the interface anyway
+                        index->Detached(it->first.c_str());
+                    }
 
                     uint32_t result = it->second.clientInterface->Release();
 
@@ -422,7 +435,8 @@ namespace Plugin {
 
         mutable Core::CriticalSection _adminLock;
         PluginHost::IShell* _service;
-        std::unique_ptr<ExternalAccess> _externalAccess;
+        Core::ProxyType<RPC::InvokeServer> _engine;
+        ExternalAccess* _externalAccess;
         std::list<Exchange::IComposition::INotification*> _observers;
         ClientDataContainer _clients;
     };

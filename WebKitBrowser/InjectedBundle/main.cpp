@@ -33,8 +33,10 @@ private:
 
 public:
     PluginHost()
-        : _comClient(Core::ProxyType<RPC::CommunicatorClient>::Create(GetConnectionNode(), Core::ProxyType<RPC::InvokeServerType<16, 2>>::Create()))
+        : _engine(Core::ProxyType<RPC::InvokeServerType<4, 2>>::Create(Core::Thread::DefaultStackSize()))
+        , _comClient(Core::ProxyType<RPC::CommunicatorClient>::Create(GetConnectionNode(), Core::ProxyType<Core::IIPCServer>(_engine)))
     {
+        _engine->Announcements(_comClient->Announcement());
     }
     ~PluginHost()
     {
@@ -45,6 +47,8 @@ public:
 public:
     void Initialize(WKBundleRef bundle)
     {
+        // Due to the LXC container support all ID's get mapped. For the TraceBuffer, use the host given ID.
+        Trace::TraceUnit::Instance().Open(Core::ProcessInfo().Id());
 
         Trace::TraceType<Trace::Information, &Core::System::MODULE_NAME>::Enable(true);
 
@@ -52,12 +56,9 @@ public:
         uint32_t result = _comClient->Open(RPC::CommunicationTimeOut);
         if (result != Core::ERROR_NONE) {
             TRACE(Trace::Error, (_T("Could not open connection to node %s. Error: %s"), _comClient->Source().RemoteId(), Core::NumberType<uint32_t>(result).Text()));
-        } else {
-            _comClient.Release();
         }
 
         _bundle = bundle;
-
         _whiteListedOriginDomainPairs = WhiteListedOriginDomainsList::RequestFromWPEFramework(bundle);
     }
 
@@ -80,6 +81,7 @@ public:
     }
 
 private:
+    Core::ProxyType<RPC::InvokeServerType<4, 2> > _engine;
     Core::ProxyType<RPC::CommunicatorClient> _comClient;
 
     // White list for CORS.

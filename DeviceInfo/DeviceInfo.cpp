@@ -1,16 +1,5 @@
 #include "DeviceInfo.h"
 
-#ifdef PROVIDE_NEXUS_OTP_ID
-#include <nexus_config.h>
-#include <nxclient.h>
-#if NEXUS_SECURITY_API_VERSION == 2
-#include "nexus_otp_key.h"
-#else
-#include "nexus_otpmsp.h"
-#include "nexus_read_otp_id.h"
-#endif
-#endif
-
 namespace WPEFramework {
 namespace Plugin {
 
@@ -31,12 +20,6 @@ namespace Plugin {
         _skipURL = static_cast<uint8_t>(service->WebPrefix().length());
         _subSystem = service->SubSystems();
         _service = service;
-#ifdef PROVIDE_NEXUS_OTP_ID
-        ASSERT(_idProvider == nullptr);
-        _idProvider = Core::Service<IdentityProvider>::Create<IdentityProvider>();
-        _subSystem->Set(PluginHost::ISubSystem::IDENTIFIER, _idProvider);
-#endif
-        _deviceId = GetDeviceId();
         _systemId = Core::SystemInfo::Instance().Id(Core::SystemInfo::Instance().RawDeviceId(), ~0);
 
         ASSERT(_subSystem != nullptr);
@@ -49,11 +32,6 @@ namespace Plugin {
     /* virtual */ void DeviceInfo::Deinitialize(PluginHost::IShell* service)
     {
         ASSERT(_service == service);
-
-        if (_idProvider != nullptr) {
-            delete _idProvider;
-            _idProvider = nullptr;
-        }
 
         if (_subSystem != nullptr) {
             _subSystem->Release();
@@ -116,7 +94,7 @@ namespace Plugin {
         return result;
     }
 
-    void DeviceInfo::SysInfo(JsonData::DeviceInfo::SysteminfoParamsData& systemInfo) const
+    void DeviceInfo::SysInfo(JsonData::DeviceInfo::SysteminfoData& systemInfo) const
     {
         Core::SystemInfo& singleton(Core::SystemInfo::Instance());
 
@@ -139,17 +117,17 @@ namespace Plugin {
         systemInfo.Serialnumber = _systemId;
     }
 
-    void DeviceInfo::AddressInfo(Core::JSON::ArrayType<JsonData::DeviceInfo::AddressesParamsData>& addressInfo) const
+    void DeviceInfo::AddressInfo(Core::JSON::ArrayType<JsonData::DeviceInfo::AddressesData>& addressInfo) const
     {
         // Get the point of entry on WPEFramework..
         Core::AdapterIterator interfaces;
 
         while (interfaces.Next() == true) {
 
-            JsonData::DeviceInfo::AddressesParamsData newElement;
+            JsonData::DeviceInfo::AddressesData newElement;
             newElement.Name = interfaces.Name();
             newElement.Mac = interfaces.MACAddress(':');
-            JsonData::DeviceInfo::AddressesParamsData& element(addressInfo.Add(newElement));
+            JsonData::DeviceInfo::AddressesData& element(addressInfo.Add(newElement));
 
             // get an interface with a public IP address, then we will have a proper MAC address..
             Core::IPV4AddressIterator selectedNode(interfaces.Index());
@@ -163,7 +141,7 @@ namespace Plugin {
         }
     }
 
-    void DeviceInfo::SocketPortInfo(JsonData::DeviceInfo::SocketinfoParamsData& socketPortInfo) const
+    void DeviceInfo::SocketPortInfo(JsonData::DeviceInfo::SocketinfoData& socketPortInfo) const
     {
         socketPortInfo.Runs = Core::ResourceMonitor::Instance().Runs();
     }
@@ -189,39 +167,5 @@ namespace Plugin {
         return (result);
     }
 
-#ifdef PROVIDE_NEXUS_OTP_ID
-    DeviceInfo::IdentityProvider::IdentityProvider()
-        : _identifier(nullptr)
-    {
-        ASSERT(_identifier == nullptr);
-        if (_identifier == nullptr) {
-            if (NEXUS_SUCCESS == NxClient_Join(NULL))
-            {
-#if NEXUS_SECURITY_API_VERSION == 2
-                NEXUS_OtpKeyInfo keyInfo;
-                if (NEXUS_SUCCESS == NEXUS_OtpKey_GetInfo(0 /*key A*/, &keyInfo)){
-                    _identifier = new uint8_t[NEXUS_OTP_KEY_ID_LENGTH + 2];
-
-                    ::memcpy(&(_identifier[1]), keyInfo.id, NEXUS_OTP_KEY_ID_LENGTH);
-
-                    _identifier[0] = NEXUS_OTP_KEY_ID_LENGTH;
-                    _identifier[NEXUS_OTP_KEY_ID_LENGTH + 1] = '\0';
-                }
-#else
-                NEXUS_OtpIdOutput id;
-                if (NEXUS_SUCCESS == NEXUS_Security_ReadOtpId(NEXUS_OtpIdType_eA, &id) ) {
-                    _identifier = new uint8_t[id.size + 2];
-
-                    ::memcpy(&(_identifier[1]), id.otpId, id.size);
-
-                    _identifier[0] = id.size;
-                    _identifier[id.size + 1] = '\0';
-                }
-#endif
-                NxClient_Uninit();
-            }
-        }
-    }
-#endif
 } // namespace Plugin
 } // namespace WPEFramework

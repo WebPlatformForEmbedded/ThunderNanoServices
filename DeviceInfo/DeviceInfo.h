@@ -26,26 +26,26 @@ namespace Plugin {
             }
 
         public:
-            Core::JSON::ArrayType<JsonData::DeviceInfo::AddressesParamsData> Addresses;
-            JsonData::DeviceInfo::SysteminfoParamsData SystemInfo;
-            JsonData::DeviceInfo::SocketinfoParamsData Sockets;
+            Core::JSON::ArrayType<JsonData::DeviceInfo::AddressesData> Addresses;
+            JsonData::DeviceInfo::SysteminfoData SystemInfo;
+            JsonData::DeviceInfo::SocketinfoData Sockets;
         };
 
     private:
         DeviceInfo(const DeviceInfo&) = delete;
         DeviceInfo& operator=(const DeviceInfo&) = delete;
 
-        uint32_t addresses(const Core::JSON::String& parameters, Core::JSON::ArrayType<JsonData::DeviceInfo::AddressesParamsData>& response)
+        uint32_t addresses(const Core::JSON::String& parameters, Core::JSON::ArrayType<JsonData::DeviceInfo::AddressesData>& response)
         {
             AddressInfo(response);
             return (Core::ERROR_NONE);
         }
-        uint32_t system(const Core::JSON::String& parameters, JsonData::DeviceInfo::SysteminfoParamsData& response)
+        uint32_t system(const Core::JSON::String& parameters, JsonData::DeviceInfo::SysteminfoData& response)
         {
             SysInfo(response);
             return (Core::ERROR_NONE);
         }
-        uint32_t sockets(const Core::JSON::String& parameters, JsonData::DeviceInfo::SocketinfoParamsData& response)
+        uint32_t sockets(const Core::JSON::String& parameters, JsonData::DeviceInfo::SocketinfoData& response)
         {
             SocketPortInfo(response);
             return (Core::ERROR_NONE);
@@ -56,7 +56,6 @@ namespace Plugin {
             : _skipURL(0)
             , _service(nullptr)
             , _subSystem(nullptr)
-            , _idProvider(nullptr)
             , _systemId()
             , _deviceId()
         {
@@ -90,50 +89,19 @@ namespace Plugin {
         // JsonRpc
         void RegisterAll();
         void UnregisterAll();
-        uint32_t get_systeminfo(JsonData::DeviceInfo::SysteminfoParamsData& response) const;
-        uint32_t get_addresses(Core::JSON::ArrayType<JsonData::DeviceInfo::AddressesParamsData>& response) const;
-        uint32_t get_socketinfo(JsonData::DeviceInfo::SocketinfoParamsData& response) const;
+        uint32_t get_systeminfo(JsonData::DeviceInfo::SysteminfoData& response) const;
+        uint32_t get_addresses(Core::JSON::ArrayType<JsonData::DeviceInfo::AddressesData>& response) const;
+        uint32_t get_socketinfo(JsonData::DeviceInfo::SocketinfoData& response) const;
 
-        void SysInfo(JsonData::DeviceInfo::SysteminfoParamsData& systemInfo) const;
-        void AddressInfo(Core::JSON::ArrayType<JsonData::DeviceInfo::AddressesParamsData>& addressInfo) const;
-        void SocketPortInfo(JsonData::DeviceInfo::SocketinfoParamsData& socketPortInfo) const;
+        void SysInfo(JsonData::DeviceInfo::SysteminfoData& systemInfo) const;
+        void AddressInfo(Core::JSON::ArrayType<JsonData::DeviceInfo::AddressesData>& addressInfo) const;
+        void SocketPortInfo(JsonData::DeviceInfo::SocketinfoData& socketPortInfo) const;
         string GetDeviceId() const;
-
-        class IdentityProvider : public PluginHost::ISubSystem::IIdentifier {
-        public:
-            IdentityProvider();
-            virtual ~IdentityProvider(){
-                if (_identifier != nullptr) {
-                    delete (_identifier);
-                }
-            };
-
-            IdentityProvider(const IdentityProvider&) = delete;
-            IdentityProvider& operator=(const IdentityProvider&) = delete;
-
-            BEGIN_INTERFACE_MAP(IdentityProvider)
-                INTERFACE_ENTRY(PluginHost::ISubSystem::IIdentifier)
-            END_INTERFACE_MAP
-
-            virtual uint8_t Identifier(const uint8_t length, uint8_t buffer[]) const override{
-                uint8_t result = 0;
-
-                if (_identifier != nullptr) {
-                    result = _identifier[0];
-                    ::memcpy(buffer, &(_identifier[1]), (result > length ? length : result));
-                }
-
-                return (result);
-            }
-        private:
-            uint8_t* _identifier;
-        };
 
     private:
         uint8_t _skipURL;
         PluginHost::IShell* _service;
         PluginHost::ISubSystem* _subSystem;
-        IdentityProvider* _idProvider;
         string _systemId;
         mutable string _deviceId;
     };
