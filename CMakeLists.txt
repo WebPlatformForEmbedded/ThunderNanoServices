@@ -30,6 +30,7 @@ option(PLUGIN_REMOTECONTROL "Include RemoteControl plugin" OFF)
 option(PLUGIN_STREAMER "Include Streamer plugin" OFF)
 option(PLUGIN_SNAPSHOT "Include Snapshot plugin" OFF)
 option(PLUGIN_SPARK "Include SparkEngine plugin" OFF)
+option(PLUGIN_VIDEOPLAYBACKCHECKER "Include VideoPlaybackChecker plugin" ON)
 option(PLUGIN_SYSTEMCOMMANDS "Include SystemCommands plugin" OFF)
 option(PLUGIN_TIMESYNC "Include TimeSync plugin" OFF)
 option(PLUGIN_TRACECONTROL "Include TraceControl plugin" OFF)
@@ -170,6 +171,10 @@ endif()
 
 if(PLUGIN_TRACECONTROL)
     add_subdirectory(TraceControl)
+endif()
+
+if(PLUGIN_VIDEOPLAYBACKCHECKER)
+    add_subdirectory(VideoPlaybackChecker)
 endif()
 
 if(PLUGIN_WEBKITBROWSER)
