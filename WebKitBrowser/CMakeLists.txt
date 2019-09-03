@@ -42,6 +42,11 @@ add_library(${MODULE_NAME} SHARED
     WebKitImplementation.cpp
     InjectedBundle/WhiteListedOriginDomainsList.cpp
     InjectedBundle/Utils.cpp
+    InjectedBundle/main.cpp
+    InjectedBundle/Milestone.cpp
+    InjectedBundle/NotifyWPEFramework.cpp
+    InjectedBundle/ClassDefinition.cpp
+    InjectedBundle/JavaScriptFunction.cpp
 )
 
 set_target_properties(${MODULE_NAME} PROPERTIES
