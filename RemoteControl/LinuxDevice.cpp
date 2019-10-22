@@ -80,6 +80,14 @@ namespace Plugin {
                 return false;
             }
 
+            void RegisterKeyProducerEvents(IKeyProducer::INotification* sink) {
+                TRACE_L1("There are no events written for LinuxDevice producer");
+            }
+
+            void UnregisterKeyProducerEvents(IKeyProducer::INotification* sink) {
+                TRACE_L1("There are no events written for LinuxDevice producer");
+            }
+
             BEGIN_INTERFACE_MAP(KeyDevice)
             INTERFACE_ENTRY(Exchange::IKeyProducer)
             END_INTERFACE_MAP

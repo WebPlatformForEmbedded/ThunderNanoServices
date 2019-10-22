@@ -39,6 +39,7 @@ static uint8_t _bindingId = static_cast<uint8_t>(~0);
  *  GreenPeak C++ Wrapper class. Hide C artifacts
  *****************************************************************************/
 
+typedef WPEFramework::Exchange::IKeyProducer::KeyProducerEvents KeyProducerEvent;
 namespace WPEFramework {
 namespace Plugin {
 
@@ -333,6 +334,44 @@ namespace Plugin {
             TRACE_GLOBAL(Trace::Information, (_T("RF4CE Report: %s"), text.c_str()));
         }
 
+        static void SendEvent(KeyProducerEvent event)
+        {
+            _singleton->_SendProducerEvent(event);
+        }
+
+        void RegisterKeyProducerEvents(IKeyProducer::INotification* sink)
+        {
+            _eventLock.Lock();
+
+            //Make sure a sink is not registered multiple times.
+            if (std::find(_notificationClients.begin(), _notificationClients.end(), sink) != _notificationClients.end())
+                return;
+
+            _notificationClients.push_back(sink);
+            sink->AddRef();
+
+            _eventLock.Unlock();
+        }
+
+        void UnregisterKeyProducerEvents(IKeyProducer::INotification* sink)
+        {
+
+            _eventLock.Lock();
+
+            std::list<Exchange::IKeyProducer::INotification*>::iterator index(std::find(_notificationClients.begin(), _notificationClients.end(), sink));
+
+            // Make sure you do not unregister something you did not register !!!
+            if (index == _notificationClients.end())
+                return;
+
+            if (index != _notificationClients.end()) {
+                (*index)->Release();
+                _notificationClients.erase(index);
+            }
+
+            _eventLock.Unlock();
+        }
+
     private:
         inline void _Dispatch(const bool pressed, const uint16_t code, const uint16_t modifiers)
         {
@@ -359,9 +398,22 @@ namespace Plugin {
             _error = 0;
             _readySignal.Unlock();
         }
+        inline void _SendProducerEvent(KeyProducerEvent event)
+        {
+            _eventLock.Lock();
 
+            std::list<Exchange::IKeyProducer::INotification*>::iterator index(_notificationClients.begin());
+
+            while (index != _notificationClients.end()) {
+                (*index)->KeyProducerEvent(event);
+                index++;
+            }
+
+            _eventLock.Unlock();
+        }
     private:
         mutable Core::CriticalSection _adminLock;
+        mutable Core::CriticalSection _eventLock;
         mutable Core::Event _readySignal;
         Exchange::IKeyHandler* _callback;
         Activity _worker;
@@ -1000,6 +1052,7 @@ static void target_DoR4ceReset(void)
 static void target_ActivatePairing()
 {
     Plugin::GreenPeak::Report(string("Entering the PairingMode."));
+    WPEFramework::Plugin::GreenPeak::SendEvent(KeyProducerEvent::ePairingStarted);
 #if 1
     gpApplication_ZRCBindSetup(false, true);
 #else
@@ -1043,11 +1096,20 @@ void gpRf4ce_cbDpiDisableConfirm(gpRf4ce_Result_t result)
 void gpApplication_IndicateBindSuccessToMiddleware(UInt8 bindingRef, UInt8 profileId)
 {
     GP_LOG_SYSTEM_PRINTF("Bind Success. BindId: 0x%x, ProfileId: 0x%x", 0, bindingRef, profileId);
+    WPEFramework::Plugin::GreenPeak::SendEvent(KeyProducerEvent::ePairingSuccess);
 }
 
 void gpApplication_IndicateBindFailureToMiddleware(gpRf4ce_Result_t result)
 {
     GP_LOG_SYSTEM_PRINTF("Bind Failure. Status 0x%x", 0, result);
+    if (result == gpRf4ce_ResultDiscoveryTimeout)
+    {
+        WPEFramework::Plugin::GreenPeak::SendEvent(KeyProducerEvent::ePairingTimedout);
+    }
+    else
+    {
+        WPEFramework::Plugin::GreenPeak::SendEvent(KeyProducerEvent::ePairingFailed);
+    }
 }
 
 extern GP_RF4CE_DISPATCHER_CONST gpRf4ceDispatcher_DataCallbacks_t

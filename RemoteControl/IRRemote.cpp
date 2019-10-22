@@ -73,6 +73,8 @@ namespace Plugin {
         virtual uint32_t Callback(Exchange::IKeyHandler* callback);
         virtual uint32_t Error() const;
         virtual string MetaData() const;
+        virtual void RegisterKeyProducerEvents(IKeyProducer::INotification* sink);
+        virtual void UnregisterKeyProducerEvents(IKeyProducer::INotification* sink);
 
     private:
         static void NexusCallback(void* nexusIRHandle, int deviceID);
@@ -202,6 +204,15 @@ namespace Plugin {
     /* virtual */ string IRRemote::MetaData() const
     {
         return _T("BCM Nexus");
+    }
+
+
+    /* virtual */ void RegisterKeyProducerEvents(IKeyProducer::INotification* sink) {
+        TRACE_L1("There are no events written for IRRemote producer");
+    }
+
+    /* virtual */ void UnregisterKeyProducerEvents(IKeyProducer::INotification* sink) {
+        TRACE_L1("There are no events written for IRRemote producer");
     }
 
     /* static */ void IRRemote::NexusCallback(void* nexusIRHandle, int deviceID)
