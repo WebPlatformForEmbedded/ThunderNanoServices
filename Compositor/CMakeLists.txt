@@ -14,7 +14,7 @@ option(PLUGIN_COMPOSITOR_GRAPHICS_HEAP_SIZE "Change graphic heap of driver (Nexu
 option(PLUGIN_COMPOSITOR_TEST "Build a compositor test client" OFF)
 
 set(PLUGIN_COMPOSITOR_IMPLEMENTATION_LIB "lib${PLATFORM_COMPOSITOR}.so" CACHE STRING "Specify a library with a compositor implentation." )
-set(PLUGIN_COMPOSITOR_RESOLUTION "720p" CACHE STRING "Specify the startup resolution")
+set(PLUGIN_COMPOSITOR_RESOLUTION "1080p" CACHE STRING "Specify the startup resolution")
 
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 0)
