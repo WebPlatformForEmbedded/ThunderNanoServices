@@ -23,11 +23,13 @@ namespace Plugin {
         _power = Core::ServiceAdministrator::Instance().Instantiate<Exchange::IPower>(Core::Library(), _T("PowerImplementation"), static_cast<uint32_t>(~0));
 
         if (_power != nullptr) {
+#ifndef DONT_REGISTER_FOR_KEY_POWER
             PluginHost::VirtualInput* keyHandler(PluginHost::InputHandler::Handler());
 
             ASSERT(keyHandler != nullptr);
 
             keyHandler->Register(&_sink, KEY_POWER);
+#endif
 
             // Receive all plugin information on state changes.
             _service->Register(&_sink);
@@ -55,11 +57,13 @@ namespace Plugin {
         // Remove all registered clients
         _clients.clear();
 
+#ifndef DONT_REGISTER_FOR_KEY_POWER
         // Also we are nolonger interested in the powerkey events, we have been requested to shut down our services!
         PluginHost::VirtualInput* keyHandler(PluginHost::InputHandler::Handler());
 
         ASSERT(keyHandler != nullptr);
         keyHandler->Unregister(&_sink, KEY_POWER);
+#endif
 
         _power->Unregister(&_sink);
 

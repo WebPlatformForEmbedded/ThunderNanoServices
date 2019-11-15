@@ -4,6 +4,7 @@ set(MODULE_NAME ${NAMESPACE}${PLUGIN_NAME})
 set(PLUGIN_POWER_AUTOSTART true CACHE STRING true)
 set(PLUGIN_POWER_GPIOPIN "" CACHE STRING "GPIO pin number")
 set(PLUGIN_POWER_GPIOTYPE "" CACHE STRING "GPIO type")
+option(PLUGIN_POWER_REGISTER_KEY_POWER "Plugin register for KEY_POWER" ON)
 
 find_package(NEXUS REQUIRED)
 find_package(NXCLIENT REQUIRED)
@@ -11,6 +12,10 @@ find_package(BcmPowerManager REQUIRED)
 find_package(${NAMESPACE}Plugins REQUIRED)
 find_package(${NAMESPACE}Definitions REQUIRED)
 find_package(CompileSettingsDebug CONFIG REQUIRED)
+
+if(NOT PLUGIN_POWER_REGISTER_KEY_POWER)
+  add_definitions(-DDONT_REGISTER_FOR_KEY_POWER)
+endif()
 
 add_library(${MODULE_NAME} SHARED 
     Power.cpp
