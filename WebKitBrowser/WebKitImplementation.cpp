@@ -1345,7 +1345,7 @@ namespace WebKitBrowser {
         enum { TYPICAL_STARTUP_TIME = 10 }; /* in Seconds */
     public:
         MemoryObserverImpl(const RPC::IRemoteConnection* connection)
-            : _main(connection == nullptr ? Core::ProcessInfo().Id() : connection->RemoteId())
+            : _main(connection == nullptr ? Core::ProcessInfo().Id() : connection->ProcessId())
             , _children(_main.Id())
             , _startTime(connection == nullptr ? 0 : Core::Time::Now().Add(TYPICAL_STARTUP_TIME * 1000).Ticks())
         { // IsOperation true till calculated time (microseconds)

@@ -39,9 +39,7 @@ namespace Plugin {
 
         if (result == Core::ERROR_TIMEDOUT || result == Core::ERROR_CONNECTION_CLOSED) {
             // connection to remote is closed. Closing plugin...
-            printf("Exiting plugin...\n");
             _shell->Deactivate(PluginHost::IShell::reason::AUTOMATIC);
-            printf("Exiting plugin2...\n");         
         }
 
         return result;

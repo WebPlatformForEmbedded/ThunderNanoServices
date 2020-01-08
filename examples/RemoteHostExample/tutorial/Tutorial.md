@@ -5,6 +5,9 @@ Remote host invocation can be used to access an out-of-process nanoservice from 
 ## High level overview
 ![Remote invocation diagram](remote_invocation_diagram.png?raw=true "Remote invocation diagram")
 
+## Enabling RemoteInvocation in framework
+To enable RemoteInvocation functionality in framework, global define REMOTEINVOCATION_ENABLED must be set in both Thunder & ThunderNanoservices. Additionaly COMRPC_POINTER_LENGTH must be set to either 32 or 64 (more on that later)
+
 ## Host device
 First thing you need to do is to enable and start RemoteInvocation plugin on the device, on which the plugin will run. You should also specify address on which the plugin will be listening for proxy requests. You do that by configuring "address" in RemoteInvocation configuration. Eg. to listen for all incoming requests on port 5797 you could use following configuration:
 ```json

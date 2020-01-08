@@ -47,10 +47,13 @@ namespace Plugin {
             _implementation->UnsubscribeTimeUpdates(this);
 
             // Close remote connection
-            _implementation->QueryInterface<RPC::RemoteLinker>()->Unlink();
+            auto linker = _implementation->QueryInterface<RPC::RemoteLinker>();
+            if (linker != nullptr) {
+                linker->Unlink();
+                linker->Release();
+            }
 
-            uint32_t result = _implementation->Release();
-
+            _implementation->Release();
             _implementation = nullptr;
         }
     }

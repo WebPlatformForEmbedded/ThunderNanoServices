@@ -5,7 +5,7 @@
 namespace WPEFramework {
 namespace Exchange {
 
-    class RemoteHostExampleImpl : public RPC::RemoteLinker, IRemoteHostExample {
+    class RemoteHostExampleImpl : public RPC::RemoteLinker, public IRemoteHostExample {
     public: 
         class TimeWorker : public Core::IDispatch {
         public:
@@ -22,6 +22,13 @@ namespace Exchange {
                     if ((*subscriber)->TimeUpdate(Core::Time::Now().ToISO8601()) != Core::ERROR_NONE) {
                         (*subscriber)->Release();
                         subscriber = _parent->_subscribers.erase(subscriber);
+
+                        // close connection
+                        auto linker = (RPC::IRemoteLinker*)_parent->QueryInterface(RPC::IRemoteLinker::ID);
+                        if (linker != nullptr) {
+                            linker->Unlink();
+                            linker->Release();
+                        }
                     }
                 }
                 _parent->_adminLock.Unlock();

@@ -796,7 +796,7 @@ namespace WebServer {
 
     public:
         MemoryObserverImpl(const RPC::IRemoteConnection* connection)
-            : _main(connection == nullptr ? Core::ProcessInfo().Id() : connection->RemoteId())
+            : _main(connection == nullptr ? Core::ProcessInfo().Id() : connection->ProcessId())
             , _observable(false)
         {
         }
