@@ -4,6 +4,7 @@ set(MODULE_NAME ${NAMESPACE}${PLUGIN_NAME})
 find_package(MFRLibs REQUIRED)
 find_package(${NAMESPACE}Plugins REQUIRED)
 find_package(${NAMESPACE}Definitions REQUIRED)
+find_package(CompileSettingsDebug CONFIG REQUIRED)
 
 add_library(${MODULE_NAME} SHARED
     FirmwareControl.cpp
@@ -11,12 +12,25 @@ add_library(${MODULE_NAME} SHARED
     Module.cpp
 )
 
+if(PLUGIN_FIRMWARECONTROL_PLATFORM_RPI)
+    target_compile_definitions(${MODULE_NAME}
+        PRIVATE
+            FIRMWARECONTROL_PLATFORM_RPI=ON)
+endif()
+
+if(PLUGIN_FIRMWARECONTROL_PLATFORM_BCM OR PLUGIN_FIRMWARECONTROL_PLATFORM_RPI)
+    target_compile_definitions(${MODULE_NAME}
+        PRIVATE
+            FIRMWARECONTROL_PLATFORM_INIT=ON)
+endif()
+
 set_target_properties(${MODULE_NAME} PROPERTIES
         CXX_STANDARD 11
         CXX_STANDARD_REQUIRED YES)
 
 target_link_libraries(${MODULE_NAME} 
     PRIVATE
+        CompileSettingsDebug::CompileSettingsDebug
         mfrlibs::mfrlibs
         ${NAMESPACE}Plugins::${NAMESPACE}Plugins
         ${NAMESPACE}Definitions::${NAMESPACE}Definitions

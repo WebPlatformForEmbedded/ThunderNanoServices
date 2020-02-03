@@ -99,7 +99,7 @@ Assigns a bluetooth device as a remote control unit.
 | Name | Type | Description |
 | :-------- | :-------- | :-------- |
 | params | object |  |
-| params.address | string | Bluetooth address of the device |
+| params.address | string | Bluetooth address |
 
 ### Result
 
@@ -192,7 +192,6 @@ BluetoothRemoteControl interface properties:
 | [address](#property.address) <sup>RO</sup> | Bluetooth address of the unit |
 | [info](#property.info) <sup>RO</sup> | Unit auxiliary information |
 | [batterylevel](#property.batterylevel) <sup>RO</sup> | Battery level |
-| [audioprofiles](#property.audioprofiles) <sup>RO</sup> | Supported audio profiles |
 | [audioprofile](#property.audioprofile) <sup>RO</sup> | Audio profile details |
 
 <a name="property.name"></a>
@@ -245,7 +244,7 @@ Provides access to the bluetooth address of the unit.
 
 | Name | Type | Description |
 | :-------- | :-------- | :-------- |
-| (property) | string | Bluetooth address of the device |
+| (property) | string | Bluetooth address |
 
 ### Errors
 
@@ -364,49 +363,6 @@ Provides access to the battery level.
     "result": 50
 }
 ```
-<a name="property.audioprofiles"></a>
-## *audioprofiles <sup>property</sup>*
-
-Provides access to the supported audio profiles.
-
-> This property is **read-only**.
-
-### Value
-
-| Name | Type | Description |
-| :-------- | :-------- | :-------- |
-| (property) | array | List of supported audio profiles |
-| (property)[#] | string | Name of the audio profile |
-
-### Errors
-
-| Code | Message | Description |
-| :-------- | :-------- | :-------- |
-| 5 | ```ERROR_ILLEGAL_STATE``` | No remote has been assigned |
-| 2 | ```ERROR_UNAVAILABLE``` | The unit does not support voice functionality |
-
-### Example
-
-#### Get Request
-
-```json
-{
-    "jsonrpc": "2.0", 
-    "id": 1234567890, 
-    "method": "BluetoothRemoteControl.1.audioprofiles"
-}
-```
-#### Get Response
-
-```json
-{
-    "jsonrpc": "2.0", 
-    "id": 1234567890, 
-    "result": [
-        "adpcm-hq"
-    ]
-}
-```
 <a name="property.audioprofile"></a>
 ## *audioprofile <sup>property</sup>*
 
@@ -419,14 +375,10 @@ Provides access to the audio profile details.
 | Name | Type | Description |
 | :-------- | :-------- | :-------- |
 | (property) | object | Audio profile details |
-| (property).codec | string | Name of the audio codec (*pcm* for uncompressed audio) |
+| (property).codec | string | Name of the audio codec (*pcm* for uncompressed audio) (must be one of the following: *PCM*, *ADPCM*) |
 | (property).channels | number | Number of audio channels (1: mono, 2: stereo, etc.) |
 | (property).rate | number | Sample rate (in Hz) |
 | (property).resolution | number | Sample resolution (in bits per sample) |
-| (property)?.be | boolean | <sup>*(optional)*</sup> Denotes if samples byte order is big-endian (default: *false*) |
-| (property)?.unsigned | boolean | <sup>*(optional)*</sup> Denotes if samples values are unsigned (default: *false*) |
-
-> The *audio profile* shall be passed as the index to the property, e.g. *BluetoothRemoteControl.1.audioprofile@adpcm-hq*.
 
 ### Errors
 
@@ -443,7 +395,7 @@ Provides access to the audio profile details.
 {
     "jsonrpc": "2.0", 
     "id": 1234567890, 
-    "method": "BluetoothRemoteControl.1.audioprofile@adpcm-hq"
+    "method": "BluetoothRemoteControl.1.audioprofile"
 }
 ```
 #### Get Response
@@ -453,12 +405,10 @@ Provides access to the audio profile details.
     "jsonrpc": "2.0", 
     "id": 1234567890, 
     "result": {
-        "codec": "ima-adpcm", 
+        "codec": "ADPCM", 
         "channels": 1, 
         "rate": 16000, 
-        "resolution": 16, 
-        "be": true, 
-        "unsigned": true
+        "resolution": 16
     }
 }
 ```
@@ -500,7 +450,7 @@ Register to this event to be notified about audio transmission status
     "jsonrpc": "2.0", 
     "method": "client.events.1.audiotransmission", 
     "params": {
-        "profile": "pcm-hq"
+        "profile": "pcm"
     }
 }
 ```

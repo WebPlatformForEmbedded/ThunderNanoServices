@@ -12,7 +12,7 @@ namespace Plugin {
 
     static const uint16_t NTPPort = 123;
 
-#ifdef __WIN32__
+#ifdef __WINDOWS__
 #pragma warning(disable : 4355)
 #endif
     TimeSync::TimeSync()
@@ -25,7 +25,7 @@ namespace Plugin {
     {
         RegisterAll();
     }
-#ifdef __WIN32__
+#ifdef __WINDOWS__
 #pragma warning(default : 4355)
 #endif
 
@@ -87,7 +87,7 @@ namespace Plugin {
     {
         Core::ProxyType<Web::Response> result(PluginHost::Factories::Instance().Response());
         Core::TextSegmentIterator index(
-            Core::TextFragment(request.Path, _skipURL, request.Path.length() - _skipURL),
+            Core::TextFragment(request.Path, _skipURL, static_cast<uint16_t>(request.Path.length()) - _skipURL),
             false,
             '/');
 

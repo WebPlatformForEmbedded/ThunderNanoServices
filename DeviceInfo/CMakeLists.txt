@@ -1,26 +1,13 @@
 set(PLUGIN_NAME DeviceInfo)
 set(MODULE_NAME ${NAMESPACE}${PLUGIN_NAME})
 
-option(PROVIDE_NEXUS_OTP_ID "Let DeviceInfo provide the Nexus OPT ID as device identifier" OFF)
-
 find_package(${NAMESPACE}Plugins REQUIRED)
+find_package(CompileSettingsDebug CONFIG REQUIRED)
 
 add_library(${MODULE_NAME} SHARED
     DeviceInfo.cpp
     DeviceInfoJsonRpc.cpp
     Module.cpp)
-
-if(PROVIDE_NEXUS_OTP_ID)
-    find_package(NEXUS REQUIRED)
-    find_package(NXCLIENT REQUIRED)
-    target_compile_definitions(${MODULE_NAME} 
-        PRIVATE 
-            PROVIDE_NEXUS_OTP_ID)
-    target_link_libraries(${MODULE_NAME} 
-        PRIVATE
-            NEXUS::NEXUS
-            NXCLIENT::NXCLIENT)
-endif()
 
 set_target_properties(${MODULE_NAME} PROPERTIES
         CXX_STANDARD 11
@@ -28,6 +15,7 @@ set_target_properties(${MODULE_NAME} PROPERTIES
 
 target_link_libraries(${MODULE_NAME} 
     PRIVATE
+        CompileSettingsDebug::CompileSettingsDebug
         ${NAMESPACE}Plugins::${NAMESPACE}Plugins)
 
 install(TARGETS ${MODULE_NAME} 

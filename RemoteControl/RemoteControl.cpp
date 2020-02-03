@@ -108,7 +108,7 @@ namespace Plugin {
         return (result);
     }
 
-#ifdef __WIN32__
+#ifdef __WINDOWS__
 #pragma warning(disable : 4355)
 #endif
     RemoteControl::RemoteControl()
@@ -121,7 +121,7 @@ namespace Plugin {
 
         RegisterAll();
     }
-#ifdef __WIN32__
+#ifdef __WINDOWS__
 #pragma warning(default : 4355)
 #endif
 
@@ -170,10 +170,10 @@ namespace Plugin {
 
             while (index.Next() == true) {
 
-                const TCHAR* producer((*index)->Name());
+                string producer((*index)->Name());
                 string loadName(producer);
 
-                TRACE_L1(_T("Searching map file for: %s"), producer);
+                TRACE_L1(_T("Searching map file for: %s"), loadName.c_str());
 
                 configList.Reset();
 
@@ -198,7 +198,7 @@ namespace Plugin {
                     TRACE_L1(_T("Opening map file: %s"), specific.c_str());
 
                     // Get our selves a table..
-                    PluginHost::VirtualInput::KeyMap& map(_inputHandler->Table(producer));
+                    PluginHost::VirtualInput::KeyMap& map(_inputHandler->Table(producer.c_str()));
                     map.Load(specific);
                     if (configList.IsValid() == true) {
                         map.PassThrough(configList.Current().PassOn.Value());
@@ -265,9 +265,7 @@ namespace Plugin {
         // Clear all injected device key maps
         while (index.Next() == true) {
 
-            const TCHAR* producer((*index)->Name());
-
-            _inputHandler->ClearTable(producer);
+            _inputHandler->ClearTable((*index)->Name().c_str());
         }
 
         // Clear default key map

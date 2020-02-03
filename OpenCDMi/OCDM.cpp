@@ -65,10 +65,6 @@ namespace OCDM {
 
         Exchange::IMemory* result = Core::Service<MemoryObserverImpl>::Create<Exchange::IMemory>(connection);
 
-        if (connection != nullptr) {
-            connection->Release();
-        }
-
         return (result);
     }
 }
@@ -82,7 +78,7 @@ namespace Plugin {
 
     /* virtual */ const string OCDM::Initialize(PluginHost::IShell* service)
     {
-		#ifdef __WIN32__
+		#ifdef __WINDOWS__
         ForceLinkingOfOpenCDM();
 		#endif
 
@@ -115,7 +111,14 @@ namespace Plugin {
                 _service->Unregister(&_notification);
                 _service = nullptr;
             } else {
-                _memory = WPEFramework::OCDM::MemoryObserver(_service->RemoteConnection(_connectionId));
+                RPC::IRemoteConnection* connection = _service->RemoteConnection(_connectionId);
+
+                ASSERT(connection != nullptr);
+
+                if(connection != nullptr) {
+                    _memory = WPEFramework::OCDM::MemoryObserver(connection);
+                    connection->Release();
+                }
                 
                 ASSERT(_memory != nullptr);
             }

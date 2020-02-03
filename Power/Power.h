@@ -153,13 +153,12 @@ namespace Plugin {
         };
 
     public:
-#ifdef __WIN32__
+#ifdef __WINDOWS__
 #pragma warning(disable : 4355)
 #endif
         Power()
             : _adminLock()
             , _skipURL(0)
-            , _pid(0)
             , _service(nullptr)
             , _clients()
             , _power(nullptr)
@@ -167,7 +166,7 @@ namespace Plugin {
         {
             RegisterAll();
         }
-#ifdef __WIN32__
+#ifdef __WINDOWS__
 #pragma warning(default : 4355)
 #endif
         virtual ~Power()
@@ -226,7 +225,6 @@ namespace Plugin {
     private:
         Core::CriticalSection _adminLock;
         uint32_t _skipURL;
-        uint32_t _pid;
         PluginHost::IShell* _service;
         Clients _clients;
         Exchange::IPower* _power;

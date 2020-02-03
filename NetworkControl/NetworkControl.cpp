@@ -54,7 +54,7 @@ namespace Plugin
         return (result);
     }
 
-#ifdef __WIN32__
+#ifdef __WINDOWS__
 #pragma warning(disable : 4355)
 #endif
     NetworkControl::NetworkControl()
@@ -70,7 +70,7 @@ namespace Plugin
     {
         RegisterAll();
     }
-#ifdef __WIN32__
+#ifdef __WINDOWS__
 #pragma warning(default : 4355)
 #endif
 
@@ -148,7 +148,10 @@ namespace Plugin
                         SYSLOG(Logging::Startup, (_T("Interface [%s] activated, no IP associated"), interfaceName.c_str()));
                     } else {
                         if (how == JsonData::NetworkControl::NetworkData::ModeType::DYNAMIC) {
-                            dhcpInterface.first->second->LoadLeases();
+                            if (dhcpInterface.first->second->LoadLeases() == true) {
+                                SYSLOG(Logging::Startup, (_T("Leased list for interface [%s] loaded!"), interfaceName.c_str()));
+                            }
+
                             SYSLOG(Logging::Startup, (_T("Interface [%s] activated, DHCP request issued"), interfaceName.c_str()));
                             Reload(interfaceName, true);
                         } else {
@@ -232,7 +235,7 @@ namespace Plugin
     NetworkControl::Process(const Web::Request& request)
     {
         Core::ProxyType<Web::Response> result(PluginHost::Factories::Instance().Response());
-        Core::TextSegmentIterator index(Core::TextFragment(request.Path, _skipURL, request.Path.length() - _skipURL), false, '/');
+        Core::TextSegmentIterator index(Core::TextFragment(request.Path, _skipURL, static_cast<uint16_t>(request.Path.length()) - _skipURL), false, '/');
 
         // By default, we assume everything works..
         result->ErrorCode = Web::STATUS_BAD_REQUEST;
@@ -427,7 +430,7 @@ namespace Plugin
     /* Saves all leased offers to file */
     void NetworkControl::DHCPEngine::SaveLeases() 
     {
-        if (_parent._persistentStoragePath.empty() == false) {
+        if (_leaseFilePath.empty() == false) {
             Core::File leaseFile(_leaseFilePath);
 
             if (leaseFile.Create() == true) {
@@ -438,7 +441,7 @@ namespace Plugin
                     leases.Add().Set(offersIterator.Current());
                 }
 
-                if (leases.ToFile(leaseFile) == false) {
+                if (leases.IElement::ToFile(leaseFile) == false) {
                     TRACE(Trace::Warning, ("Error occured while trying to save dhcp leases to file!"));
                 } 
 
@@ -453,16 +456,19 @@ namespace Plugin
         Loads list of previously saved offers and adds it to unleased list 
         for requesting in future.
     */
-    void NetworkControl::DHCPEngine::LoadLeases() 
+    bool NetworkControl::DHCPEngine::LoadLeases() 
     {
-        if (_parent._persistentStoragePath.empty() == false) {
+        bool result = false;
+
+        if (_leaseFilePath.empty() == false) {
 
             Core::File leaseFile(_leaseFilePath);
 
             if (leaseFile.Open(true) == true) {
 
                 Core::JSON::ArrayType<DHCPClientImplementation::Offer::JSON> leases;
-                if (leases.FromFile(leaseFile) == true) {
+                Core::OptionalType<Core::JSON::Error> error;
+                if (leases.IElement::FromFile(leaseFile, error) == true) {
 
                     auto iterator = leases.Elements();
                     while (iterator.Next()) {
@@ -470,11 +476,17 @@ namespace Plugin
                     }
                 }
 
+                if (error.IsSet() == true) {
+                    SYSLOG(Logging::ParsingError, (_T("Parsing failed with %s"), ErrorDisplayMessage(error.Value()).c_str()));
+                } else {
+                    result = true;
+                }
+
                 leaseFile.Close();
-            } else {
-                TRACE(Trace::Warning, ("Failed to open leases file %s\n for saving", leaseFile.Name().c_str()));
             }
         }
+
+        return result;
     }
 
     uint32_t NetworkControl::Reload(const string& interfaceName, const bool dynamic)
@@ -810,6 +822,7 @@ namespace Plugin
     {
         string message;
         Core::AdapterIterator adapter(interfaceName);
+        JsonData::NetworkControl::ConnectionchangeParamsData::StatusType status;
 
         if (adapter.IsValid() == true) {
             // Send a message with the state of the adapter.
@@ -829,8 +842,10 @@ namespace Plugin
                 message += _T("Create\" }");
 
                 TRACE(Trace::Information, (_T("Added interface: %s"), interfaceName.c_str()));
+                status = JsonData::NetworkControl::ConnectionchangeParamsData::StatusType::CREATED;
             } else {
                 message += _T("Update\" }");
+                status = JsonData::NetworkControl::ConnectionchangeParamsData::StatusType::UPDATED;
                 TRACE(Trace::Information, (_T("Updated interface: %s"), interfaceName.c_str()));
             }
 
@@ -865,11 +880,13 @@ namespace Plugin
             _adminLock.Unlock();
 
             TRACE(Trace::Information, (_T("Removed interface: %s"), interfaceName.c_str()));
+            status = JsonData::NetworkControl::ConnectionchangeParamsData::StatusType::REMOVED;
 
             message = string(_T("{ \"interface\": \"")) + interfaceName + string(_T("\", \"running\": \"false\", \"up\": \"false\", \"event\": \"Delete\" }"));
         }
 
         _service->Notify(message);
+        event_connectionchange(interfaceName.c_str(), string(), status);
     }
 
 } // namespace Plugin

@@ -9,7 +9,7 @@ namespace Plugin {
     static Core::ProxyPoolType<Web::JSONBodyType<DHCPServer::Data>> jsonDataFactory(1);
     static Core::ProxyPoolType<Web::JSONBodyType<DHCPServer::Data::Server>> jsonServerDataFactory(1);
 
-#ifdef __WIN32__
+#ifdef __WINDOWS__
 #pragma warning(disable : 4355)
 #endif
     DHCPServer::DHCPServer()
@@ -18,7 +18,7 @@ namespace Plugin {
     {
         RegisterAll();
     }
-#ifdef __WIN32__
+#ifdef __WINDOWS__
 #pragma warning(default : 4355)
 #endif
 
@@ -97,7 +97,7 @@ namespace Plugin {
 
         Core::ProxyType<Web::Response> result(PluginHost::Factories::Instance().Response());
         Core::TextSegmentIterator index(
-            Core::TextFragment(request.Path, _skipURL, request.Path.length() - _skipURL),
+            Core::TextFragment(request.Path, _skipURL, static_cast<uint16_t>(request.Path.length() - _skipURL)),
             false,
             '/');
 
@@ -185,7 +185,7 @@ namespace Plugin {
             Core::File leasesFile(_persistentPath + interface + ".json");
 
             if (leasesFile.Create() == true) {
-                leasesList.ToFile(leasesFile);
+                leasesList.IElement::ToFile(leasesFile);
                 leasesFile.Close();
             } else {
                 TRACE_L1("Could not save leases in pemranent storage area.\n");
@@ -202,7 +202,11 @@ namespace Plugin {
             if (leasesFile.Open(true) == true) {
                 Core::JSON::ArrayType<Data::Server::Lease> leases;
 
-                leases.FromFile(leasesFile);
+                Core::OptionalType<Core::JSON::Error> error;
+                leases.IElement::FromFile(leasesFile, error);
+                if (error.IsSet() == true) {
+                    SYSLOG(Logging::ParsingError, (_T("Parsing failed with %s"), ErrorDisplayMessage(error.Value()).c_str()));
+                }
                 leasesFile.Close();
 
                 auto iterator = leases.Elements();

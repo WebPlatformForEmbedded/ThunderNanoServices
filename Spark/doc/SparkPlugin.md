@@ -362,23 +362,6 @@ Signals a visibility change of the browser.
     }
 }
 ```
-<a name="event.pageclosure"></a>
-## *pageclosure <sup>event</sup>*
-
-Notifies that the web page requests to close its window.
-
-### Parameters
-
-This event carries no parameters.
-
-### Example
-
-```json
-{
-    "jsonrpc": "2.0", 
-    "method": "client.events.1.pageclosure"
-}
-```
 <a name="event.statechange"></a>
 ## *statechange <sup>event</sup>*
 

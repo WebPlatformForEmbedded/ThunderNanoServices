@@ -43,13 +43,18 @@ namespace Plugin {
                 _server->Release();
                 _server = nullptr;
 
-                stateControl->Release();
-
             } else {
                 stateControl->Configure(_service);
                 stateControl->Release();
 
-                _memory = WPEFramework::WebServer::MemoryObserver(_service->RemoteConnection(_connectionId));
+                RPC::IRemoteConnection* connection = _service->RemoteConnection(_connectionId);
+
+                ASSERT(connection != nullptr);
+
+                if(connection != nullptr) {
+                    _memory = WPEFramework::WebServer::MemoryObserver(connection);
+                    connection->Release();
+                }
 
                 ASSERT(_memory != nullptr);
 

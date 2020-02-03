@@ -94,7 +94,11 @@ namespace Plugin {
 
         if (dictionaryFile.Open(true) == true) {
             NameSpace dictionary;
-            dictionary.FromFile(dictionaryFile);
+            Core::OptionalType<Core::JSON::Error> error;
+            dictionary.IElement::FromFile(dictionaryFile, error);
+            if (error.IsSet() == true) {
+                SYSLOG(Logging::ParsingError, (_T("Parsing failed with %s"), ErrorDisplayMessage(error.Value()).c_str()));
+            }
             CreateInternalDictionary(EMPTY_STRING, dictionary);
         }
 
@@ -112,7 +116,7 @@ namespace Plugin {
         if (dictionaryFile.Open(true) == true) {
             NameSpace dictionary;
             CreateExternalDictionary(EMPTY_STRING, dictionary);
-            dictionary.ToFile(dictionaryFile);
+            dictionary.IElement::ToFile(dictionaryFile);
         }
     }
 
@@ -135,7 +139,7 @@ namespace Plugin {
         ASSERT(_skipURL <= request.Path.length());
         // <GET> ../[namespace/]{Key}
         Core::ProxyType<Web::Response> result(PluginHost::Factories::Instance().Response());
-        Core::TextSegmentIterator index(Core::TextFragment(request.Path, _skipURL, request.Path.length() - _skipURL), false, '/');
+        Core::TextSegmentIterator index(Core::TextFragment(request.Path, _skipURL, static_cast<uint32_t>(request.Path.length()) - _skipURL), false, '/');
         // <PUT> ../[namespace/]{Key}?Type=[persistent|volatile|closure]
         // If there is an entry, the first one will always be a '/', skip this one..
         index.Next();

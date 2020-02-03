@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 3.3)
-
 find_package(WPEFramework)
 
 # All packages that did not deliver a CMake Find script (and some deprecated scripts that need to be removed)
@@ -8,10 +7,12 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/")
 
 option(PLUGIN_BLUETOOTH "Include Bluetooth plugin" OFF)
 option(PLUGIN_BLUETOOTHREMOTECONTROL "Include Bluetooth Remote Control plugin" OFF)
+option(PLUGIN_COBALT "Include Cobalt plugin" OFF)
 option(PLUGIN_COMMANDER "Include Commander plugin" OFF)
 option(PLUGIN_COMPOSITOR "Include Compsitor plugin" OFF)
 option(PLUGIN_DEVICEIDENTIFICATION "Include DeviceIdentification plugin" OFF)
 option(PLUGIN_DEVICEINFO "Include DeviceInfo plugin" OFF)
+option(PLUGIN_DISPLAYINFO "Include DisplayInfo plugin" OFF)
 option(PLUGIN_DSRESOLUTION "Include DSResolution plugin" OFF)
 option(PLUGIN_DHCPSERVER "Include DHCPServer plugin" OFF)
 option(PLUGIN_DIALSERVER " Include DIALServer plugin" OFF)
@@ -23,12 +24,15 @@ option(PLUGIN_FRONTPANEL "Include FrontPanel plugin" OFF)
 option(PLUGIN_LOCATIONSYNC "Include LocationSync plugin" OFF)
 option(PLUGIN_MESSENGER "Include Messenger plugin" OFF)
 option(PLUGIN_MONITOR "Include Monitor plugin" OFF)
+option(PLUGIN_PROCESSMONITOR "Include Process Monitor plugin" OFF)
 option(PLUGIN_NETWORKCONTROL "Include NetworkControlplugin" OFF)
 option(PLUGIN_OPENCDMI "Include OpenCDMi plugin" OFF)
 option(PLUGIN_PACKAGER "Include Packager plugin" OFF)
 option(PLUGIN_POWER "Include Power plugin" OFF)
 option(PLUGIN_REMOTECONTROL "Include RemoteControl plugin" OFF)
+option(PLUGIN_RTSPCLIENT "Include RtspClient plugin" OFF)
 option(PLUGIN_SECURESHELLSERVER "Include SecureShellServer plugin" OFF)
+option(PLUGIN_SECURITYAGENT "Include SecurityAgent plugin" OFF)
 option(PLUGIN_STREAMER "Include Streamer plugin" OFF)
 option(PLUGIN_SNAPSHOT "Include Snapshot plugin" OFF)
 option(PLUGIN_SPARK "Include SparkEngine plugin" OFF)
@@ -48,6 +52,8 @@ option(WPEFRAMEWORK_CREATE_IPKG_TARGETS "Generate the CPack configuration for pa
 # Library installation section
 string(TOLOWER ${NAMESPACE} STORAGE_DIRECTORY)
 
+#include(CompileSettings)
+
 # for writing pc and config files
 include(CmakeHelperFunctions)
 
@@ -61,6 +67,10 @@ endif()
 
 if(PLUGIN_BLUETOOTHREMOTECONTROL)
     add_subdirectory(BluetoothRemoteControl)
+endif()
+
+if(PLUGIN_COBALT)
+    add_subdirectory(Cobalt)
 endif()
 
 if(PLUGIN_COMMANDER)
@@ -77,6 +87,10 @@ endif()
 
 if(PLUGIN_DEVICEINFO)
     add_subdirectory(DeviceInfo)
+endif()
+
+if(PLUGIN_DISPLAYINFO)
+    add_subdirectory(DisplayInfo)
 endif()
 
 if(PLUGIN_DSRESOLUTION)
@@ -131,6 +145,10 @@ if(PLUGIN_MONITOR)
     add_subdirectory(Monitor)
 endif()
 
+if(PLUGIN_PROCESSMONITOR)
+    add_subdirectory(ProcessMonitor)
+endif()
+
 if(PLUGIN_NETWORKCONTROL)
     add_subdirectory(NetworkControl)
 endif()
@@ -157,6 +175,10 @@ endif()
 
 if(PLUGIN_SECURESHELLSERVER)
     add_subdirectory(SecureShellServer)
+endif()
+
+if (PLUGIN_SECURITYAGENT)
+    add_subdirectory(SecurityAgent)
 endif()
 
 if(PLUGIN_SNAPSHOT)
@@ -215,6 +237,8 @@ if(PLUGIN_FILETRANSFER)
     add_subdirectory(FileTransfer)
 endif()
 
+add_subdirectory(examples)
+
 if(WPEFRAMEWORK_CREATE_IPKG_TARGETS)
     set(CPACK_GENERATOR "DEB")
     set(CPACK_DEB_COMPONENT_INSTALL ON)
@@ -236,4 +260,4 @@ if(WPEFRAMEWORK_CREATE_IPKG_TARGETS)
     include(CPack)
 endif()
 
-add_subdirectory(examples)
+

@@ -98,6 +98,9 @@ namespace Plugin {
             AdapterObserver& operator=(const AdapterObserver&) = delete;
 
         public:
+#ifdef __WINDOWS__
+#pragma warning(disable : 4355)
+#endif
             AdapterObserver(NetworkControl* parent)
                 : _parent(*parent)
                 , _adminLock()
@@ -106,6 +109,9 @@ namespace Plugin {
             {
                 ASSERT(parent != nullptr);
             }
+#ifdef __WINDOWS__
+#pragma warning(default : 4355)
+#endif
             virtual ~AdapterObserver()
             {
             }
@@ -285,34 +291,28 @@ namespace Plugin {
             DHCPEngine& operator=(const DHCPEngine&) = delete;
 
         public:
+#ifdef __WINDOWS__
+#pragma warning(disable : 4355)
+#endif
             DHCPEngine(NetworkControl* parent, const string& interfaceName, const string& persistentStoragePath)
                 : _parent(*parent)
                 , _retries(0)
                 , _client(interfaceName, std::bind(&DHCPEngine::NewOffer, this, std::placeholders::_1), 
                           std::bind(&DHCPEngine::RequestResult, this, std::placeholders::_1, std::placeholders::_2))
-                , _leaseFilePath(persistentStoragePath + _client.Interface() + ".json")
+                , _leaseFilePath((persistentStoragePath.empty()) ? "" :  (persistentStoragePath + _client.Interface() + ".json"))
             {
-                // Make sure that lease file exists
-                if (persistentStoragePath.empty() == false) {
-                    Core::File leaseFile(_leaseFilePath);
 
-                    if (leaseFile.Exists() == false) {
-                        if (leaseFile.Create() == true) {
-                            leaseFile.Close();
-                        } else {
-                            TRACE(Trace::Warning, ("Failed to create persistent dhcp lease file for %s", interfaceName.c_str()))
-                        }
-                    }
-                    
-                }
             }
+#ifdef __WINDOWS__
+#pragma warning(default : 4355)
+#endif
             ~DHCPEngine()
             {
             }
         public:
             // Permanent IP storage
             void SaveLeases();
-            void LoadLeases();
+            bool LoadLeases();
 
             inline DHCPClientImplementation::classifications Classification() const
             {
@@ -356,11 +356,16 @@ namespace Plugin {
             void RequestResult(const DHCPClientImplementation::Offer& offer, const bool result) {
                 StopWatchdog();
 
+                JsonData::NetworkControl::ConnectionchangeParamsData::StatusType status;
                 if (result == true) {
                     _parent.RequestAccepted(_client.Interface(), offer);
+                    status = JsonData::NetworkControl::ConnectionchangeParamsData::StatusType::CONNECTED;
                 } else {
                     _parent.RequestFailed(_client.Interface(), offer);
+                    status = JsonData::NetworkControl::ConnectionchangeParamsData::StatusType::CONNECTIONFAILED;
                 }
+
+                _parent.event_connectionchange(_client.Interface().c_str(), offer.Address().HostAddress().c_str(), status);
             }
 
             inline void Request(const DHCPClientImplementation::Offer& offer) {
@@ -515,6 +520,7 @@ namespace Plugin {
         uint32_t get_network(const string& index, Core::JSON::ArrayType<JsonData::NetworkControl::NetworkData>& response) const;
         uint32_t get_up(const string& index, Core::JSON::Boolean& response) const;
         uint32_t set_up(const string& index, const Core::JSON::Boolean& param);
+        void event_connectionchange(const string& name, const string& address, const JsonData::NetworkControl::ConnectionchangeParamsData::StatusType& status);
 
     private:
         Core::CriticalSection _adminLock;

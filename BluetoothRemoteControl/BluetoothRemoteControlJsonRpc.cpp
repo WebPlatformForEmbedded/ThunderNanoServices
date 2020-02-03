@@ -134,7 +134,7 @@ namespace Plugin {
         uint32_t result = Core::ERROR_ILLEGAL_STATE;
 
         if (_gattRemote != nullptr) {
-            response = _gattRemote->BatteryLevel();
+            response = BatteryLevel();
             result = Core::ERROR_NONE;
         }
 
@@ -151,6 +151,7 @@ namespace Plugin {
         uint32_t result = Core::ERROR_ILLEGAL_STATE;
 
         if (_gattRemote != nullptr) {
+            result = Core::ERROR_NONE;
         }
 
         return result;
@@ -164,8 +165,13 @@ namespace Plugin {
     uint32_t BluetoothRemoteControl::get_audioprofile(const string& index, AudioprofileData& response) const
     {
         uint32_t result = Core::ERROR_ILLEGAL_STATE;
+        if(_gattRemote != nullptr) {
+            result = Core::ERROR_UNKNOWN_KEY;
+            Exchange::IVoiceProducer::IProfile* profile = _gattRemote->SelectedProfile();
 
-        if (_gattRemote != nullptr) {
+            if (profile != nullptr) {
+                profile->Release();
+            }
         }
 
         return (result);

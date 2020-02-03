@@ -1,7 +1,9 @@
 #pragma once
 
-#include "AccessControlList.h"
 #include "Module.h"
+#include <interfaces/json/JsonData_SecurityAgent.h>
+#include "AccessControlList.h"
+
 
 namespace WPEFramework {
 namespace Plugin {
@@ -74,6 +76,15 @@ namespace Plugin {
         //! based on a a request is handled.
         //! @}
         virtual Core::ProxyType<Web::Response> Process(const Web::Request& request);
+
+    private:
+        //   JsonRPC methods
+        // -------------------------------------------------------------------------------------------------------
+        void RegisterAll();
+        void UnregisterAll();
+        uint32_t endpoint_createtoken(const JsonData::SecurityAgent::CreatetokenParamsData& params, JsonData::SecurityAgent::CreatetokenResultInfo& response);
+        uint32_t endpoint_validate(const JsonData::SecurityAgent::CreatetokenResultInfo& params, JsonData::SecurityAgent::ValidateResultData& response);
+
 
     private:
         uint8_t _secretKey[Crypto::SHA256::Length];

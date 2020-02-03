@@ -481,7 +481,7 @@ namespace Plugin {
             };
 
         public:
-#ifdef __WIN32__
+#ifdef __WINDOWS__
 #pragma warning(disable : 4355)
 #endif
             ChannelMap()
@@ -493,7 +493,7 @@ namespace Plugin {
                 , _proxyMap(*this)
             {
             }
-#ifdef __WIN32__
+#ifdef __WINDOWS__
 #pragma warning(default : 4355)
 #endif
             ~ChannelMap()
@@ -847,10 +847,8 @@ namespace WebServer {
 
     Exchange::IMemory* MemoryObserver(const RPC::IRemoteConnection* connection)
     {
+        ASSERT(connection != nullptr);
         Exchange::IMemory* result = Core::Service<MemoryObserverImpl>::Create<Exchange::IMemory>(connection);
-        if (connection != nullptr) {
-            connection->Release();
-        }
         return (result);
     }
 }

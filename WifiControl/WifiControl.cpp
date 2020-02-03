@@ -76,7 +76,11 @@ namespace Plugin
 
                     if (configFile.Open(true) == true) {
                         ConfigList configs;
-                        configs.FromFile(configFile);
+                        Core::OptionalType<Core::JSON::Error> error;
+                        configs.IElement::FromFile(configFile, error);
+                        if (error.IsSet() == true) {
+                            SYSLOG(Logging::ParsingError, (_T("Parsing failed with %s"), ErrorDisplayMessage(error.Value()).c_str()));
+                        }
 
                         // iterator over the list and write back
                         auto index(configs.Configs.Elements());
@@ -280,7 +284,7 @@ namespace Plugin
                         WifiControl::ConfigList configs;
                         WPASupplicant::Config::Iterator list(_controller->Configs());
                         configs.Set(list);
-                        configs.ToFile(configFile);
+                        configs.IElement::ToFile(configFile);
                     }
 
                 } else if ((index.Current().Text() == _T("Debug")) && (index.Next() == true)) {

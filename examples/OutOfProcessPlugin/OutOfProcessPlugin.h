@@ -135,7 +135,7 @@ namespace Plugin {
         };
 
     public:
-#ifdef __WIN32__
+#ifdef __WINDOWS__
 #pragma warning(disable : 4355)
 #endif
         OutOfProcessPlugin()
@@ -151,7 +151,7 @@ namespace Plugin {
             , _hidden(false)
         {
         }
-#ifdef __WIN32__
+#ifdef __WINDOWS__
 #pragma warning(default : 4355)
 #endif
         virtual ~OutOfProcessPlugin()
@@ -206,6 +206,7 @@ namespace Plugin {
         void URLChanged(const string& URL);
         void Hidden(const bool hidden);
         void StateChange(const PluginHost::IStateControl::state value);
+        void ConnectionTermination(uint32_t connection);
         void Deactivated(RPC::IRemoteConnection* connection);
 
     private:
