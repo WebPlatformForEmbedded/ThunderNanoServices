@@ -161,7 +161,6 @@ namespace WPASupplicant {
         if ((_requests.size() > 0) && (_requests.front()->Message().empty() == false)) {
             string& data = _requests.front()->Message();
             TRACE(Communication, (_T("Send: [%s]"), data.c_str()));
-            printf("Send: [%s]\n", data.c_str());
             result = (data.length() > maxSendSize ? maxSendSize : data.length());
             memcpy(dataFrame, data.c_str(), result);
             data = data.substr(result);
@@ -196,7 +195,6 @@ namespace WPASupplicant {
             Core::EnumerateType<Controller::events> event(position == string::npos ? message.c_str() : message.substr(0, position).c_str());
 
             if (event.IsSet() == true) {
-                printf("Dispatch message: [%s] _networks.size=%d\n", message.c_str(), _networks.size());
                 TRACE(Communication, (_T("Dispatch message: [%s]"), message.c_str()));
 
                 if ((event == CTRL_EVENT_CONNECTED) || (event == CTRL_EVENT_DISCONNECTED) || (event == WPS_AP_AVAILABLE)) {
@@ -211,26 +209,15 @@ namespace WPASupplicant {
                 } else if ((event == CTRL_EVENT_SCAN_STARTED)) {
                     // if it is already set then scan started by us in Scan() otherwise intiiated by supplicant e.g. Scan during Connect OR autoscan
                     _scanning = true;
-                    _scanStartTime = clock();
+                    _scanStartTime = Core::Time::Now().Ticks();
                     _added = 0;
                     _removed = 0;
-                    printf("Scan started\n");
+                    TRACE(Trace::Information, ("Scan started"));
                 } else if ((event == CTRL_EVENT_SCAN_RESULTS)) {
-#if 1
-                    clock_t elapsed = clock() - _scanStartTime;
                     _scanning = false;
+                    uint64_t elapsed = Core::Time::Now().Ticks() - _scanStartTime;
                     Reevaluate();
-                    printf("Scan completed added=%d remove=%d in %f sec\n", _added, _removed, ((float)elapsed)/1000 );
-#else
-                    _adminLock.Lock();
-                    if (_scanRequest.Set() == true) {
-                        //_scanRequest.Event(event.Value());
-                        _adminLock.Unlock();
-                        Submit(&_scanRequest);
-                    } else {
-                        _adminLock.Unlock();
-                    }
-#endif
+                    TRACE(Trace::Information, ("Scan completed added=%d remove=%d in %lf sec", _added, _removed, ((double_t)elapsed)/1000000) );
                 } else if ((event == CTRL_EVENT_BSS_ADDED) || (event == CTRL_EVENT_BSS_REMOVED)) {
                     ASSERT(position != string::npos);
 
@@ -248,16 +235,10 @@ namespace WPASupplicant {
                     // now take out the BSSID
                     uint64_t bssid = BSSID(Core::TextFragment(infoLine, index, infoLine.Length() - index).Text());
 
-                    //_adminLock.Lock();
-
                     // Let see what we need to do with this BSSID, add or remove :-)
                     //if ((event == CTRL_EVENT_BSS_ADDED) && (_detailRequest.Set(bssid) == true)) {
                     if (event == CTRL_EVENT_BSS_ADDED) {
                         ++_added;
-                        // send out a request for detail.
-                        //    _adminLock.Unlock();
-                        //    Submit(&_detailRequest);
-                        //    _adminLock.Lock();
                         NetworkInfo newEntry;
                         _networks[bssid] = newEntry;
                     } else if (event == CTRL_EVENT_BSS_REMOVED) {
@@ -267,19 +248,12 @@ namespace WPASupplicant {
                         if (network != _networks.end()) {
                             _networks.erase(network);
                         }
-                        //if (_callback != nullptr) {
-                        //    _callback->Dispatch(event.Value());
-                        //}
                     }
-
-                    //_adminLock.Unlock();
                 }
             } else {
                 TRACE(Communication, (_T("RAW EVENT MESSAGE: [%s]"), message.c_str()));
-                //printf("RAW EVENT MESSAGE: [%s]\n", message.c_str());
             }
         } else {
-            //printf("response size=%d [%.5s ...]\n", response.length(), response.c_str());
             _adminLock.Lock();
             size_t requestsNumber = _requests.size();
             _adminLock.Unlock();
@@ -398,16 +372,6 @@ namespace WPASupplicant {
 
     uint64_t Controller::Timed(const uint64_t scheduledTime)
     {
-#if 0
-        if (_scanning) {
-            clock_t elapsed = (clock() - _scanStartTime);
-            printf("%s: elapsed=%u CLOCKS_PER_SEC=%u\n", __FUNCTION__, elapsed, CLOCKS_PER_SEC);
-            if ((uint32_t)(elapsed/1000) > 10) {       // just for test, see if it is one off
-                printf("Too long since last scan, resetting...\n" );
-                _scanning = false;
-            }
-        }
-#endif
         uint32_t rc = Scan();
         TRACE(Trace::Error, ("%s: Scan returned %d", __FUNCTION__, rc));
         ScheduleScan(_scanInterval);
@@ -420,10 +384,8 @@ namespace WPASupplicant {
 
         if (_scanTimer.Pending()) {
             TRACE(Trace::Information, ("%s: Ignoring, timer is pending (%d)", __FUNCTION__, _scanTimer.Pending()));
-            //printf("%s: Ignoring, timer is pending (%d)\n", __FUNCTION__, _scanTimer.Pending());
         } else {
             TRACE(Trace::Information,("%s: Scheudling next scan in %u ms", __FUNCTION__, _scanInterval));
-            TRACE_L1("%s: Scheudling next scan in %u ms", __FUNCTION__, _scanInterval);
             Core::Time NextTick = Core::Time::Now();
             NextTick.Add(scanInterval);
             _scanTimer.Schedule(NextTick.Ticks(), ScanTimer(*this));

@@ -284,118 +284,7 @@ namespace WPASupplicant {
 #endif // __DEBUG__
             bool _settable;
         };
-        class ScanRequest : public Request {
-        private:
-            ScanRequest() = delete;
-            ScanRequest(const ScanRequest&) = delete;
-            ScanRequest& operator=(const ScanRequest&) = delete;
 
-        public:
-            ScanRequest(Controller& parent)
-                : Request()
-                , _scanning(false)
-                , _parent(parent)
-                , _eventReporting(~0)
-            {
-            }
-            virtual ~ScanRequest()
-            {
-            }
-
-        public:
-            inline bool Activated()
-            {
-                if (_scanning == false) {
-                    _scanning = true;
-                    return (true);
-                }
-                return (false);
-            }
-            inline void Aborted()
-            {
-                _scanning = false;
-            }
-            inline bool IsScanning() const
-            {
-                return (_scanning);
-            }
-            bool Set()
-            {
-                return (Request::Set(string(_TXT("SCAN_RESULTS"))));
-            }
-            virtual void Completed(const string& response, const bool abort) override
-            {
-                if (abort == false) {
-                    Core::TextFragment data(response.c_str(), response.length());
-                    uint32_t marker = data.ForwardFind('\n');
-                    uint32_t markerEnd = data.ForwardFind('\n', marker + 1);
-
-//                    _parent.Clear();
-
-                    while (marker != markerEnd) {
-
-                        Core::TextFragment element(data, marker + 1, (markerEnd - marker - 1));
-                        marker = markerEnd;
-                        markerEnd = data.ForwardFind('\n', marker + 1);
-                        NetworkInfo newEntry;
-//                        _parent.Add(Transform(element, newEntry), newEntry);
-                    }
-                }
-                _scanning = false;
-                TRACE_L1("ScanRequest::%s _scanning=%d", __FUNCTION__, _scanning);
-
-                if (_eventReporting != static_cast<uint32_t>(~0)) {
-                    _parent.Notify(static_cast<events>(_eventReporting));
-                    _eventReporting = static_cast<uint32_t>(~0);
-                }
-
-                //_signaled.SetEvent();
-
-
-            }
-            inline void Event(const events value)
-            {
-                _eventReporting = value;
-            }
-
-
-        private:
-            uint64_t Transform(const Core::TextFragment& infoLine, NetworkInfo& source)
-            {
-                // First thing we find will be 6 bytes...
-                uint64_t bssid = BSSID(infoLine.Text());
-
-                // Next is the frequency
-                uint16_t index = infoLine.ForwardSkip(_T(" \t"), 18);
-                uint16_t end = infoLine.ForwardFind(_T(" \t"), index);
-
-                uint32_t frequency = Core::NumberType<uint32_t>(Core::TextFragment(infoLine, index, end - index));
-
-                // Next we will find the Signal Strength
-                index = infoLine.ForwardSkip(_T(" \t"), end);
-                end = infoLine.ForwardFind(_T(" \t"), index);
-
-                int32_t signal = Core::NumberType<int32_t>(Core::TextFragment(infoLine, index, end - index));
-
-                // Extract the flags from the information
-                index = infoLine.ForwardSkip(_T(" \t"), end);
-                end = infoLine.ForwardFind(_T(" \t"), index);
-
-                uint32_t keys = 0;
-                uint16_t pairs = KeyPair(Core::TextFragment(infoLine, index, end - index), keys);
-
-                // And last but not least, we will find the SSID
-                index = infoLine.ForwardSkip(_T(" \t"), end);
-                source.Set(Core::TextFragment(infoLine, index, infoLine.Length() - index).Text(), frequency, signal, pairs, keys);
-
-                return (bssid);
-            }
-
-        private:
-            bool _scanning;
-            Controller& _parent;
-            uint32_t _eventReporting;
-        };
         class StatusRequest : public Request {
         private:
             StatusRequest() = delete;
@@ -770,14 +659,13 @@ namespace WPASupplicant {
 
     protected:
         Controller(const string& supplicantBase, const string& interfaceName, const string& bssexpirationage, const uint16_t waitTime)
-            : BaseClass(false, Core::NodeId(), Core::NodeId(), 512, 32768)
+            : BaseClass(false, Core::NodeId(), Core::NodeId(), 512, -1)
             , _adminLock()
             , _requests()
             , _networks()
             , _enabled()
             , _error(Core::ERROR_UNAVAILABLE)
             , _callback(nullptr)
-            //, _scanRequest(*this)
             , _detailRequest(*this)
             , _networkRequest(*this)
             , _statusRequest(*this)
@@ -809,6 +697,8 @@ namespace WPASupplicant {
                         _error = Core::ERROR_COULD_NOT_SET_ADDRESS;
                     }
                     else if (SetKey("bss_expiration_age", bssexpirationage.c_str()) != Core::ERROR_NONE) {
+                        _error = Core::ERROR_GENERAL;
+                    } else if (SetKey("bss_max_count", "1024") != Core::ERROR_NONE) {
                         _error = Core::ERROR_GENERAL;
                     } else {
                         const bool set = _statusRequest.Set();
@@ -862,10 +752,6 @@ namespace WPASupplicant {
         }
         inline bool IsScanning() const
         {
-            //_adminLock.Lock();
-            //const bool result = _scanRequest.IsScanning();
-            //_adminLock.Unlock();
-            //return result;
             return _scanning;
         }
         inline const string& Current() const
@@ -883,11 +769,6 @@ namespace WPASupplicant {
         {
             uint32_t result = Core::ERROR_INPROGRESS;
 
-            //_adminLock.Lock();
-            //const bool activated = _scanRequest.Activated();
-            //_adminLock.Unlock();
-            //if (activated == true) {
-
             if (!_scanning) {
                 _scanning = true;
                 result = Core::ERROR_NONE;
@@ -896,9 +777,6 @@ namespace WPASupplicant {
                 Submit(&exchange);
 
                 if ((exchange.Wait(MaxConnectionTime) == false) || (exchange.Response() != _T("OK"))) {
-                    //_adminLock.Lock();
-                    //_scanRequest.Aborted();
-                    //_adminLock.Unlock();
                     result = Core::ERROR_UNAVAILABLE;
                 }
 
@@ -1638,9 +1516,6 @@ namespace WPASupplicant {
         }
         // These methods (add/add/update) are assumed to be running in a locked context.
         // Completion of requests are running in a locked context, so oke to update maps/lists
-        //void Clear() {
-        //    _networks.clear();
-        //};
         void Add(const uint64_t& bssid, const NetworkInfo& entry);
         void Add(const string& ssid, const bool current, const uint64_t& bssid);
         void Update(const string& status);
@@ -1718,14 +1593,13 @@ namespace WPASupplicant {
         EnabledContainer _enabled;
         uint32_t _error;
         Core::IDispatchType<const events>* _callback;
-        //ScanRequest _scanRequest;
         DetailRequest _detailRequest;
         NetworkRequest _networkRequest;
         StatusRequest _statusRequest;
         Core::TimerType<ScanTimer> _scanTimer;
         uint32_t _scanInterval;
         bool _scanning;
-        clock_t _scanStartTime;
+        uint64_t _scanStartTime;
         uint16_t _added, _removed;
 
     };
