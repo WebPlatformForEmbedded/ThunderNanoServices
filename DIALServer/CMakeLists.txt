@@ -7,7 +7,7 @@ find_package(CompileSettingsDebug CONFIG REQUIRED)
 option(PLUGIN_DIALSERVER_ENABLE_YOUTUBE "Enable YouTube support for DIAL server" OFF)
 option(PLUGIN_DIALSERVER_ENABLE_NETFLIX "Enable Netflix support for DIAL server" OFF)
 
-set(YOUTUBE_MODE "passive" CACHE STRING "How the DIAL server should process incomming requests from Youtube (passive/active), leave empty to disable")
+set(YOUTUBE_MODE "active" CACHE STRING "How the DIAL server should process incomming requests from Youtube (passive/active), leave empty to disable")
 set(NETFLIX_MODE "passive" CACHE STRING "How the DIAL server should process incomming requests from Netflix (passive/active), leave empty to disable")
 
 set(WEBSERVER_CALLSIGN "" CACHE STRING "Callsign of the WebServer plugin if used, leave empty to disable")
