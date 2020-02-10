@@ -161,6 +161,7 @@ namespace WPASupplicant {
         if ((_requests.size() > 0) && (_requests.front()->Message().empty() == false)) {
             string& data = _requests.front()->Message();
             TRACE(Communication, (_T("Send: [%s]"), data.c_str()));
+            printf("Send: [%s]\n", data.c_str());
             result = (data.length() > maxSendSize ? maxSendSize : data.length());
             memcpy(dataFrame, data.c_str(), result);
             data = data.substr(result);
@@ -168,9 +169,14 @@ namespace WPASupplicant {
         _adminLock.Unlock();
         return (result);
     }
+
     /* virtual */ uint16_t Controller::ReceiveData(uint8_t* dataFrame, const uint16_t receivedSize)
     {
+        return ProcessResponse(dataFrame, receivedSize);
+    }
 
+    uint16_t Controller::ProcessResponse(uint8_t* dataFrame, const uint16_t receivedSize)
+    {
         string response = string(reinterpret_cast<const char*>(dataFrame), (dataFrame[receivedSize - 1] == '\n' ? receivedSize - 1 : receivedSize));
 
         if (response[0] == '<') {
@@ -196,6 +202,7 @@ namespace WPASupplicant {
 
             if (event.IsSet() == true) {
                 TRACE(Communication, (_T("Dispatch message: [%s]"), message.c_str()));
+                printf("Dispatch message: [%s]\n", message.c_str());
 
                 if ((event == CTRL_EVENT_CONNECTED) || (event == CTRL_EVENT_DISCONNECTED) || (event == WPS_AP_AVAILABLE)) {
                      _adminLock.Lock();
@@ -236,7 +243,6 @@ namespace WPASupplicant {
                     uint64_t bssid = BSSID(Core::TextFragment(infoLine, index, infoLine.Length() - index).Text());
 
                     // Let see what we need to do with this BSSID, add or remove :-)
-                    //if ((event == CTRL_EVENT_BSS_ADDED) && (_detailRequest.Set(bssid) == true)) {
                     if (event == CTRL_EVENT_BSS_ADDED) {
                         ++_added;
                         NetworkInfo newEntry;
@@ -274,6 +280,7 @@ namespace WPASupplicant {
 
         return (receivedSize);
     }
+
     // These methods (add/add/update) are assumed to be running in a locked context.
     // Completion of requests are running in a locked context, so oke to update maps/lists
     void Controller::Add(const uint64_t& bssid, const NetworkInfo& entry)
@@ -282,6 +289,7 @@ namespace WPASupplicant {
         _networks[bssid] = entry;
         Reevaluate();
     }
+
     void Controller::Add(const string& ssid, const bool current, const uint64_t& bssid)
     {
         TRACE(Communication, (_T("Added Network: %s"), ssid.c_str()));
@@ -301,9 +309,9 @@ namespace WPASupplicant {
 
         Reevaluate();
     }
+
     void Controller::Update(const uint64_t& bssid, const string& ssid, const uint32_t id, uint32_t frequency, const int32_t signal, const uint16_t pairs, const uint32_t keys, const uint32_t throughput)
     {
-
         bool scanInProgress = false;
 
         NetworkInfoContainer::iterator index(_networks.find(bssid));
@@ -346,9 +354,9 @@ namespace WPASupplicant {
 
         Reevaluate();
     }
+
     void Controller::Reevaluate()
     {
-
         NetworkInfoContainer::iterator index(_networks.begin());
 
         while ((index != _networks.end()) && (index->second.HasDetail() == true)) {
@@ -373,7 +381,9 @@ namespace WPASupplicant {
     uint64_t Controller::Timed(const uint64_t scheduledTime)
     {
         uint32_t rc = Scan();
-        TRACE(Trace::Error, ("%s: Scan returned %d", __FUNCTION__, rc));
+        if ( rc ) {
+            TRACE(Trace::Error, ("%s: Scan Failed (%d)", __FUNCTION__, rc));
+        }
         ScheduleScan(_scanInterval);
         return 0;
     }
@@ -390,6 +400,79 @@ namespace WPASupplicant {
             NextTick.Add(scanInterval);
             _scanTimer.Schedule(NextTick.Ticks(), ScanTimer(*this));
         }
+    }
+
+    Controller::ControlSocket::ControlSocket(Controller& parent)
+        : BaseClass(false, Core::NodeId(), Core::NodeId(), WIFI_SENDBUF_SIZE, WIFI_RECVBUF_SIZE)
+        , _parent(parent)
+        , _attached(false)
+    {
+    }
+
+    Controller::ControlSocket::~ControlSocket()
+    {
+        if (BaseClass::IsOpen()) {
+            if (BaseClass::Close(MaxConnectionTime) != Core::ERROR_NONE) {
+                TRACE_L1("Could not close the channel. %d", __LINE__);
+            }
+        }
+    }
+
+    void Controller::ControlSocket::Open(const string& local, const string& remote)
+    {
+        string localControl = local + "_control";
+        LocalNode(Core::NodeId(localControl.c_str()));
+        RemoteNode(Core::NodeId(remote.c_str()));
+        uint32_t _error = BaseClass::Open(MaxConnectionTime);
+        TRACE(Trace::Information,("Opening Control Socket loacl=%s remote=%s _error=%d\n", localControl.c_str(), remote.c_str(), _error));
+        if (_error == Core::ERROR_NONE) {
+            _command = "ATTACH";
+            Trigger();
+        } else {
+            TRACE(Trace::Error,("Failed to open control socket\n"));
+        }
+    }
+
+    void Controller::ControlSocket::Close()
+    {
+        if ( IsOpen() ) {
+            if (BaseClass::Close(MaxConnectionTime) != Core::ERROR_NONE) {
+                TRACE_L1("Could not close the channel. %d", __LINE__);
+            }
+        }
+    }
+
+    void Controller::ControlSocket::StateChange()
+    {
+        TRACE(Trace::Information,("ControlSocket::StateChange: %s\n", IsOpen() ? _T("true") : _T("false")));
+    }
+
+    uint16_t Controller::ControlSocket::SendData(uint8_t* dataFrame, const uint16_t maxSendSize)
+    {
+        uint16_t result = _command.size();
+
+        if (!_attached && result) {
+            memcpy(dataFrame, _command.c_str(), result);
+            TRACE(Communication, ("ControlSocket::%s: [%s]\n", __FUNCTION__, _command.c_str()));
+            _command = "";
+        }
+
+        return result;
+    }
+
+    uint16_t Controller::ControlSocket::ReceiveData(uint8_t* dataFrame, const uint16_t receivedSize)
+    {
+        uint16_t result = 0;
+        string response = string(reinterpret_cast<const char*>(dataFrame), (dataFrame[receivedSize - 1] == '\n' ? receivedSize - 1 : receivedSize));
+
+        if (response[0] == '<') {
+            result = _parent.ProcessResponse(dataFrame, receivedSize);
+        } else {
+            TRACE(Communication, ("ControlSocket::%s: [%s]\n", __FUNCTION__, response.c_str()));
+            result = receivedSize;
+        }
+
+        return result;
     }
 }
 } // WPEFramework::WPASupplicant

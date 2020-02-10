@@ -10,7 +10,11 @@
 namespace WPEFramework {
 namespace WPASupplicant {
 
-    class Controller : public Core::StreamType<Core::SocketDatagram> {
+    #define WIFI_SENDBUF_SIZE 512
+    #define WIFI_RECVBUF_SIZE static_cast<uint16_t>(-1) // use system default
+    typedef Core::StreamType<Core::SocketDatagram> BaseClass;
+
+    class Controller : public BaseClass {
     public:
         static uint16_t KeyPair(const Core::TextFragment& element, uint32_t& keys);
         static string BSSID(const uint64_t& bssid);
@@ -37,6 +41,20 @@ namespace WPASupplicant {
         Controller() = delete;
         Controller(const Controller&) = delete;
         Controller& operator=(const Controller&) = delete;
+        class ControlSocket : public BaseClass {
+            public:
+                ControlSocket(Controller& parent);
+                ~ControlSocket();
+                void Open(const string& local, const string& remote);
+                void Close();
+                void StateChange();
+                uint16_t SendData(uint8_t* dataFrame, const uint16_t maxSendSize);
+                uint16_t ReceiveData(uint8_t* dataFrame, const uint16_t receivedSize);
+            private:
+                Controller& _parent;
+                bool _attached;
+                string _command;
+        };
 
         class ConfigInfo {
         public:
@@ -655,11 +673,11 @@ namespace WPASupplicant {
         };
         typedef std::map<const uint64_t, NetworkInfo> NetworkInfoContainer;
         typedef std::map<const string, ConfigInfo> EnabledContainer;
-        typedef Core::StreamType<Core::SocketDatagram> BaseClass;
 
     protected:
         Controller(const string& supplicantBase, const string& interfaceName, const string& bssexpirationage, const uint16_t waitTime)
-            : BaseClass(false, Core::NodeId(), Core::NodeId(), 512, -1)
+            : BaseClass(false, Core::NodeId(), Core::NodeId(), WIFI_SENDBUF_SIZE, WIFI_RECVBUF_SIZE)
+            , _controlSocket(*this)
             , _adminLock()
             , _requests()
             , _networks()
@@ -673,30 +691,25 @@ namespace WPASupplicant {
             , _scanning(false)
 
         {
-            //debugEnable = true;
             string remoteName(Core::Directory::Normalize(supplicantBase) + interfaceName);
 
             if (Core::File(remoteName).Exists() == true) {
 
-                string data(
+                string localName(
                     Core::Directory::Normalize(supplicantBase) + _T("wpa_ctrl_") + interfaceName + '_' + Core::NumberType<uint32_t>(::getpid()).Text());
 
-                LocalNode(Core::NodeId(data.c_str()));
+                LocalNode(Core::NodeId(localName.c_str()));
 
                 RemoteNode(Core::NodeId(remoteName.c_str()));
 
+                _controlSocket.Open(localName, remoteName);
+
                 _error = BaseClass::Open(MaxConnectionTime);
+                TRACE(Trace::Information, ("Opening Socket local=%s remote=%s _error=%d\n", localName.c_str(), remoteName.c_str(), _error));
 
                 if ((_error == Core::ERROR_NONE) && (Probe(waitTime) == true)) {
 
-                    CustomRequest exchange(string(_TXT("ATTACH")));
-
-                    Submit(&exchange);
-
-                    if ((exchange.Wait(MaxConnectionTime) == false) || (exchange.Response() != _T("OK"))) {
-                        _error = Core::ERROR_COULD_NOT_SET_ADDRESS;
-                    }
-                    else if (SetKey("bss_expiration_age", bssexpirationage.c_str()) != Core::ERROR_NONE) {
+                    if (SetKey("bss_expiration_age", bssexpirationage.c_str()) != Core::ERROR_NONE) {
                         _error = Core::ERROR_GENERAL;
                     } else if (SetKey("bss_max_count", "1024") != Core::ERROR_NONE) {
                         _error = Core::ERROR_GENERAL;
@@ -705,8 +718,6 @@ namespace WPASupplicant {
                         ASSERT(set == true || !"StatusRequest::Set failed yet the request has just been constructed. Is must be settable.");
                         Submit(&_statusRequest);
                     }
-
-                    Revoke(&exchange);
                 }
             }
         }
@@ -718,23 +729,11 @@ namespace WPASupplicant {
         }
         virtual ~Controller()
         {
-
+            _controlSocket.Close();
             if (IsClosed() == false) {
-
-                CustomRequest exchange(string(_TXT("DETACH")));
-
-                Submit(&exchange);
-
-                if ((exchange.Wait(MaxConnectionTime) == false) || (exchange.Response() != _T("OK"))) {
-
-                    // We are disconnected
-                    TRACE_L1("Could not detach from the supplicant. %d", __LINE__);
-                }
                 if (BaseClass::Close(MaxConnectionTime) != Core::ERROR_NONE) {
                     TRACE_L1("Could not close the channel. %d", __LINE__);
                 }
-
-                Revoke(&exchange);
 
                 // Now abort, for anything still in there.
                 Abort();
@@ -781,7 +780,10 @@ namespace WPASupplicant {
                 }
 
                 Revoke(&exchange);
+            } else {
+                TRACE(Trace::Information, ("%s: Scan in progress\n", __FUNCTION__));
             }
+
 
             return (result);
         }
@@ -1525,6 +1527,7 @@ namespace WPASupplicant {
         void Reevaluate();
         virtual uint16_t SendData(uint8_t* dataFrame, const uint16_t maxSendSize);
         virtual uint16_t ReceiveData(uint8_t* dataFrame, const uint16_t receivedSize);
+        uint16_t ProcessResponse(uint8_t* dataFrame, const uint16_t receivedSize);
 
         void Revoke(const Request* id) const
         {
@@ -1587,6 +1590,7 @@ namespace WPASupplicant {
         uint64_t Timed(const uint64_t scheduledTime);
 
     private:
+        ControlSocket _controlSocket;
         mutable Core::CriticalSection _adminLock;
         mutable std::list<Request*> _requests;
         NetworkInfoContainer _networks;
