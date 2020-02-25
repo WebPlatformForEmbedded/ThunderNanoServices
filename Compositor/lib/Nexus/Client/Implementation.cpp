@@ -98,6 +98,12 @@ namespace Nexus {
         strcpy(joinSettings.name, name.c_str());
 
         NEXUS_Error rc = NxClient_Join(&joinSettings);
+
+        if( rc == NEXUS_SUCCESS ) {
+                
+            NxClient_UnregisterAcknowledgeStandby(NxClient_RegisterAcknowledgeStandby());
+        }
+
         BDBG_ASSERT(!rc);
 #else
         NEXUS_Error rc = NEXUS_Platform_Join();
