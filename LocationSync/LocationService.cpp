@@ -313,7 +313,7 @@ namespace Plugin {
 
                 if (constructor != nullptr) {
 
-                    const string hostName(info.Host().Value());
+                    const string hostName(info.Host().Value().Text());
 
                     _state = ACTIVE;
 
@@ -324,7 +324,7 @@ namespace Plugin {
                     _request->Verb = Web::Request::HTTP_GET;
                     _request->Path = _T("/");
                     if (info.Path().IsSet() == true) {
-                        _request->Path += info.Path().Value();
+                        _request->Path += info.Path().Value().Text();
                     }
                     _remoteId = hostName;
 
@@ -333,7 +333,7 @@ namespace Plugin {
                     }
 
                     if (info.Query().IsSet() == true) {
-                        _request->Query = info.Query().Value();
+                        _request->Query = info.Query().Value().Text();
                     }
 
                     _infoCarrier = constructor->factory();
