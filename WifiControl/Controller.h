@@ -10,8 +10,8 @@
 namespace WPEFramework {
 namespace WPASupplicant {
 
-    #define WIFI_SENDBUF_SIZE 512
-    #define WIFI_RECVBUF_SIZE static_cast<uint16_t>(-1) // use system default
+    static constexpr uint16_t SendBufSize = 512;
+    static constexpr uint16_t RecvBufSize = 32767;
     typedef Core::StreamType<Core::SocketDatagram> BaseClass;
 
     class Controller : public BaseClass {
@@ -676,7 +676,7 @@ namespace WPASupplicant {
 
     protected:
         Controller(const string& supplicantBase, const string& interfaceName, const string& bssexpirationage, const uint16_t waitTime)
-            : BaseClass(false, Core::NodeId(), Core::NodeId(), WIFI_SENDBUF_SIZE, WIFI_RECVBUF_SIZE)
+            : BaseClass(false, Core::NodeId(), Core::NodeId(), SendBufSize, RecvBufSize)
             , _controlSocket(*this)
             , _adminLock()
             , _requests()
@@ -699,11 +699,7 @@ namespace WPASupplicant {
                     Core::Directory::Normalize(supplicantBase) + _T("wpa_ctrl_") + interfaceName + '_' + Core::NumberType<uint32_t>(::getpid()).Text());
 
                 LocalNode(Core::NodeId(localName.c_str()));
-
                 RemoteNode(Core::NodeId(remoteName.c_str()));
-
-                _controlSocket.Open(localName, remoteName);
-
                 _error = BaseClass::Open(MaxConnectionTime);
                 TRACE(Trace::Information, ("Opening Socket local=%s remote=%s _error=%d\n", localName.c_str(), remoteName.c_str(), _error));
 
@@ -714,6 +710,7 @@ namespace WPASupplicant {
                     } else if (SetKey("bss_max_count", "1024") != Core::ERROR_NONE) {
                         _error = Core::ERROR_GENERAL;
                     } else {
+                        _controlSocket.Open(localName, remoteName);
                         const bool set = _statusRequest.Set();
                         ASSERT(set == true || !"StatusRequest::Set failed yet the request has just been constructed. Is must be settable.");
                         Submit(&_statusRequest);
@@ -1582,7 +1579,7 @@ namespace WPASupplicant {
 
                 const_cast<Controller*>(this)->Trigger();
             } else {
-                TRACE_L1("Submit does not trigger, there are %d messages pending [%s,%s]", static_cast<unsigned int>(_requests.size()), _requests.front()->Original().c_str(), _requests.front()->Message().c_str());
+                TRACE_L2("Submit does not trigger, there are %d messages pending [%s,%s]", static_cast<unsigned int>(_requests.size()), _requests.front()->Original().c_str(), _requests.front()->Message().c_str());
                 _adminLock.Unlock();
             }
         }

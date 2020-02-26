@@ -161,7 +161,6 @@ namespace WPASupplicant {
         if ((_requests.size() > 0) && (_requests.front()->Message().empty() == false)) {
             string& data = _requests.front()->Message();
             TRACE(Communication, (_T("Send: [%s]"), data.c_str()));
-            printf("Send: [%s]\n", data.c_str());
             result = (data.length() > maxSendSize ? maxSendSize : data.length());
             memcpy(dataFrame, data.c_str(), result);
             data = data.substr(result);
@@ -202,7 +201,6 @@ namespace WPASupplicant {
 
             if (event.IsSet() == true) {
                 TRACE(Communication, (_T("Dispatch message: [%s]"), message.c_str()));
-                printf("Dispatch message: [%s]\n", message.c_str());
 
                 if ((event == CTRL_EVENT_CONNECTED) || (event == CTRL_EVENT_DISCONNECTED) || (event == WPS_AP_AVAILABLE)) {
                      _adminLock.Lock();
@@ -223,7 +221,9 @@ namespace WPASupplicant {
                 } else if ((event == CTRL_EVENT_SCAN_RESULTS)) {
                     _scanning = false;
                     uint64_t elapsed = Core::Time::Now().Ticks() - _scanStartTime;
+                    _adminLock.Lock();
                     Reevaluate();
+                    _adminLock.Unlock();
                     TRACE(Trace::Information, ("Scan completed added=%d remove=%d in %lf sec", _added, _removed, ((double_t)elapsed)/1000000) );
                 } else if ((event == CTRL_EVENT_BSS_ADDED) || (event == CTRL_EVENT_BSS_REMOVED)) {
                     ASSERT(position != string::npos);
@@ -242,6 +242,7 @@ namespace WPASupplicant {
                     // now take out the BSSID
                     uint64_t bssid = BSSID(Core::TextFragment(infoLine, index, infoLine.Length() - index).Text());
 
+                    _adminLock.Lock();
                     // Let see what we need to do with this BSSID, add or remove :-)
                     if (event == CTRL_EVENT_BSS_ADDED) {
                         ++_added;
@@ -255,6 +256,7 @@ namespace WPASupplicant {
                             _networks.erase(network);
                         }
                     }
+                    _adminLock.Unlock();
                 }
             } else {
                 TRACE(Communication, (_T("RAW EVENT MESSAGE: [%s]"), message.c_str()));
@@ -395,7 +397,7 @@ namespace WPASupplicant {
         if (_scanTimer.Pending()) {
             TRACE(Trace::Information, ("%s: Ignoring, timer is pending (%d)", __FUNCTION__, _scanTimer.Pending()));
         } else {
-            TRACE(Trace::Information,("%s: Scheudling next scan in %u ms", __FUNCTION__, _scanInterval));
+            TRACE_L1("%s: Scheudling next scan in %u ms", __FUNCTION__, _scanInterval);
             Core::Time NextTick = Core::Time::Now();
             NextTick.Add(scanInterval);
             _scanTimer.Schedule(NextTick.Ticks(), ScanTimer(*this));
@@ -403,7 +405,7 @@ namespace WPASupplicant {
     }
 
     Controller::ControlSocket::ControlSocket(Controller& parent)
-        : BaseClass(false, Core::NodeId(), Core::NodeId(), WIFI_SENDBUF_SIZE, WIFI_RECVBUF_SIZE)
+        : BaseClass(false, Core::NodeId(), Core::NodeId(), SendBufSize, RecvBufSize)
         , _parent(parent)
         , _attached(false)
     {
