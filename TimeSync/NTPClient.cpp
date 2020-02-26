@@ -72,7 +72,7 @@ namespace Plugin {
 
             if (url.Type() == Core::URL::SCHEME_NTP) {
 
-                string hostname(url.Host().Value());
+                string hostname(url.Host().Value().Text());
 
                 if (url.Port().IsSet() == true) {
 
