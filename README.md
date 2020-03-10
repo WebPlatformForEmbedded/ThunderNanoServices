@@ -1,3 +1,5 @@
+# This repository has been moved to: https://github.com/rdkcentral/ThunderNanoServices
+
 # ThunderNanoServices
 * [BluetoothControl](BluetoothControl/doc/BluetoothControlPlugin.md)
 * [BluetoothRemoteControl](BluetoothRemoteControl/doc/BluetoothRemoteControlPlugin.md)
