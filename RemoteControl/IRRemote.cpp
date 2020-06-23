@@ -128,8 +128,6 @@ namespace Plugin {
 
     /* virtual */ IRRemote::~IRRemote()
     {
-
-        Remotes::RemoteAdministrator::Instance().Revoke(*this);
     }
 
     void IRRemote::Initialize()

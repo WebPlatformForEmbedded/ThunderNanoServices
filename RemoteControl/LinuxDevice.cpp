@@ -51,7 +51,6 @@ namespace Plugin {
             virtual bool Setup() { return true; }
             virtual bool Teardown() { return true; }
             virtual bool HandleInput(uint16_t code, uint16_t type, int32_t value) = 0;
-            virtual void ProducerEvent(const Exchange::ProducerEvents event) { }
         };
 
         class KeyDevice : public Exchange::IKeyProducer, public IDevInputDevice {
@@ -68,7 +67,7 @@ namespace Plugin {
             }
             virtual ~KeyDevice()
             {
-                Remotes::RemoteAdministrator::Instance().Revoke(*this);
+                _parent->Clear(this);
             }
             string Name() const override
             {
@@ -126,7 +125,7 @@ namespace Plugin {
             {
                 if (type == EV_KEY) {
                     if ((code < BTN_MISC) || (code >= KEY_OK)) {
-                        if (value != 2) {
+                        if ((_callback != nullptr) && (value != 2)) {
                             _callback->KeyEvent((value != 0), code, Name());
                         }
                         return true;
@@ -134,16 +133,18 @@ namespace Plugin {
                 }
                 return false;
             }
-            void ProducerEvent(const Exchange::ProducerEvents event) override
+
+            BEGIN_INTERFACE_MAP(KeyDevice)
+            INTERFACE_ENTRY(Exchange::IKeyProducer)
+            END_INTERFACE_MAP
+
+        private:
+            inline void ProducerEvent(const Exchange::ProducerEvents event)
             {
                 if (_callback) {
                     _callback->ProducerEvent(Name(), event);
                 }
             }
-
-            BEGIN_INTERFACE_MAP(KeyDevice)
-            INTERFACE_ENTRY(Exchange::IKeyProducer)
-            END_INTERFACE_MAP
 
         private:
             LinuxDevice* _parent;
@@ -163,7 +164,7 @@ namespace Plugin {
             }
             virtual ~WheelDevice()
             {
-                //Remotes::RemoteAdministrator::Instance().Revoke(*this);
+                _parent->Clear(this);
             }
             string Name() const override
             {
@@ -189,7 +190,7 @@ namespace Plugin {
             }
             bool HandleInput(uint16_t code, uint16_t type, int32_t value) override
             {
-                if (type == EV_REL) {
+                if ((_callback != nullptr) && (type == EV_REL)) {
                     switch(code)
                     {
                     case REL_WHEEL:
@@ -223,7 +224,10 @@ namespace Plugin {
             {
                 Remotes::RemoteAdministrator::Instance().Announce(*this);
             }
-
+            virtual ~PointerDevice()
+            {
+                _parent->Clear(this);
+            }
             string Name() const override
             {
                 return (_T("DevPointerInput"));
@@ -248,21 +252,23 @@ namespace Plugin {
             }
             bool HandleInput(uint16_t code, uint16_t type, int32_t value) override
             {
-                if (type == EV_REL) {
-                    switch(code)
-                    {
-                    case REL_X:
-                        _callback->PointerMotionEvent(value, 0);
-                        return true;
-                    case REL_Y:
-                        _callback->PointerMotionEvent(0, value);
-                        return true;
+                if (_callback != nullptr) {
+                    if (type == EV_REL) {
+                        switch(code)
+                        {
+                        case REL_X:
+                            _callback->PointerMotionEvent(value, 0);
+                            return true;
+                        case REL_Y:
+                            _callback->PointerMotionEvent(0, value);
+                            return true;
+                        }
                     }
-                }
-                else if (type == EV_KEY) {
-                    if ((code >= BTN_MOUSE) && (code <= BTN_TASK)) {
-                        _callback->PointerButtonEvent((value != 0), (code - BTN_MOUSE));
-                        return true;
+                    else if (type == EV_KEY) {
+                        if ((code >= BTN_MOUSE) && (code <= BTN_TASK)) {
+                            _callback->PointerButtonEvent((value != 0), (code - BTN_MOUSE));
+                            return true;
+                        }
                     }
                 }
                 return false;
@@ -296,6 +302,10 @@ namespace Plugin {
             {
                 _abs_latch.fill(AbsInfo());
                 Remotes::RemoteAdministrator::Instance().Announce(*this);
+            }
+            virtual ~TouchDevice()
+            {
+                _parent->Clear(this);
             }
             string Name() const override
             {
@@ -418,7 +428,9 @@ namespace Plugin {
                         _have_abs = false;
                         for (size_t i = 1; i < _abs_latch.size(); i++) {
                             if (_abs_latch[i].Action() != AbsInfo::absaction::IDLE) {
-                                _callback->TouchEvent((i - 1), _abs_latch[i].State(), _abs_latch[i].X(), _abs_latch[i].Y());
+                                if (_callback != nullptr) {
+                                    _callback->TouchEvent((i - 1), _abs_latch[i].State(), _abs_latch[i].X(), _abs_latch[i].Y());
+                                }
                                 _abs_latch[i].Reset();
                             }
                         }
@@ -511,6 +523,7 @@ namespace Plugin {
         LinuxDevice()
             : Core::Thread(Core::Thread::DefaultStackSize(), _T("LinuxInputSystem"))
             , _devices()
+            , _eventLock()
             , _monitor(nullptr)
             , _update(-1)
         {
@@ -570,6 +583,7 @@ namespace Plugin {
             }
 
             _inputDevices.clear();
+
         }
 
     public:
@@ -583,7 +597,12 @@ namespace Plugin {
             // We are done, start observing again.
             Run();
 
-            return (true);
+            // Check devices are paired
+            _eventLock.Lock();
+            bool status = ((_devices.size() != 0) ? true : false);
+            _eventLock.Unlock();
+
+            return (status);
         }
         bool Unpair(string bindingId)
         {
@@ -595,7 +614,12 @@ namespace Plugin {
             // We are done, start observing again.
             Run();
 
-            return (true);
+            // Check devices are unpaired
+            _eventLock.Lock();
+            bool status = ((_devices.size() == 0) ? true : false);
+            _eventLock.Unlock();
+
+            return (status);
         }
 
     private:
@@ -612,6 +636,7 @@ namespace Plugin {
 
                     if (entry.Open(true) == true) {
                         int fd = entry.DuplicateHandle();
+                        _eventLock.Lock();
                         std::map<string, std::pair<int, IDevInputDevice*>>::iterator device(_devices.find(entry.Name()));
                         if (device == _devices.end()) {
                             string deviceName;
@@ -629,6 +654,7 @@ namespace Plugin {
 
                             _devices.insert(std::make_pair(entry.Name(), std::make_pair(fd, inputDevice)));
                         }
+                        _eventLock.Unlock();
                     }
                 }
             }
@@ -638,13 +664,25 @@ namespace Plugin {
                 device->Setup();
             }
         }
+        void Clear(IDevInputDevice* inputDevice)
+        {
+             std::vector<IDevInputDevice*>::iterator index = find(_inputDevices.begin(), _inputDevices.end(), inputDevice);
+             if (index != _inputDevices.end()) {
+                 _inputDevices.erase(index);
+             }
+             if (_inputDevices.empty() == true) {
+                 Block();
+             }
+        }
         void Clear()
         {
+            _eventLock.Lock();
             for (std::map<string, std::pair<int, IDevInputDevice*>>::const_iterator it = _devices.begin(), end = _devices.end();
                  it != end; ++it) {
                 close(it->second.first);
             }
             _devices.clear();
+            _eventLock.Unlock();
         }
         void Block()
         {
@@ -663,10 +701,12 @@ namespace Plugin {
                 int result = std::max(_pipe[0], _update);
 
                 // set up all the input devices
+                _eventLock.Lock();
                 for (std::map<string, std::pair<int, IDevInputDevice*>>::const_iterator index = _devices.begin(), end = _devices.end(); index != end; ++index) {
                     FD_SET(index->second.first, &readset);
                     result = std::max(result, index->second.first);
                 }
+                _eventLock.Unlock();
 
                 result = select(result + 1, &readset, 0, 0, nullptr);
 
@@ -690,6 +730,7 @@ namespace Plugin {
                     }
 
                     // find the devices to read from
+                    _eventLock.Lock();
                     std::map<string, std::pair<int, IDevInputDevice*>>::iterator index = _devices.begin();
 
                     while (index != _devices.end()) {
@@ -706,6 +747,7 @@ namespace Plugin {
                             ++index;
                         }
                     }
+                    _eventLock.Unlock();
                 }
             }
             return (Core::infinite);
@@ -761,6 +803,7 @@ namespace Plugin {
 
     private:
         std::map<string, std::pair<int, IDevInputDevice*>> _devices;
+        Core::CriticalSection _eventLock;
         int _pipe[2];
         udev_monitor* _monitor;
         int _update;

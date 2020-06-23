@@ -224,7 +224,6 @@ namespace Plugin {
         }
         virtual ~GreenPeak()
         {
-            Remotes::RemoteAdministrator::Instance().Revoke(*this);
         }
 
     public:
@@ -335,7 +334,6 @@ namespace Plugin {
             _autopairing = config.AutoPairing.Value();
             _worker.Run();
         }
-
         BEGIN_INTERFACE_MAP(GreenPeak)
         INTERFACE_ENTRY(Exchange::IKeyProducer)
         END_INTERFACE_MAP
