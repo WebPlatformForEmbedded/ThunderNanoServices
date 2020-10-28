@@ -59,7 +59,7 @@ namespace Plugin {
                         _scanTime = scanTime;
                         _type = type;
                         _flags = flags;
-                        PluginHost::WorkerPool::Instance().Submit(Core::ProxyType<Core::IDispatch>(*this));
+                        Core::IWorkerPool::Instance().Submit(Core::ProxyType<Core::IDispatch>(*this));
                     }
                 }
                 void Load(const uint16_t scanTime, const bool limited, const bool passive)
@@ -67,7 +67,7 @@ namespace Plugin {
                     if (_mode == 0) {
                         _mode = LOW_ENERGY | (passive ? PASSIVE : 0) | (limited ? LIMITED : 0);
                         _scanTime = scanTime;
-                        PluginHost::WorkerPool::Instance().Submit(Core::ProxyType<Core::IDispatch>(*this));
+                        Core::IWorkerPool::Instance().Submit(Core::ProxyType<Core::IDispatch>(*this));
                     }
                 }
 
@@ -103,7 +103,7 @@ namespace Plugin {
             }
             virtual ~Scanner()
             {
-                PluginHost::WorkerPool::Instance().Revoke(_activity);
+                Core::IWorkerPool::Instance().Revoke(_activity);
             }
 
         public:

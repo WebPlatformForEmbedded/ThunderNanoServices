@@ -124,7 +124,7 @@ namespace Plugin {
 
                 _adminLock.Lock();
 
-                PluginHost::WorkerPool::Instance().Revoke(job);
+                Core::IWorkerPool::Instance().Revoke(job);
 
                 _reporting.clear();
 
@@ -145,7 +145,7 @@ namespace Plugin {
                         Core::Time entry(Core::Time::Now().Add(100));
                         Core::ProxyType<Core::IDispatch> job(*this);
 
-                        PluginHost::WorkerPool::Instance().Schedule(entry, job);
+                        Core::IWorkerPool::Instance().Schedule(entry, job);
                     }
                 }
 
@@ -316,7 +316,7 @@ namespace Plugin {
                     _retries = _parent.ResponseTime() + 1;
 
                     // Submit a job, as watchdog.
-                    PluginHost::WorkerPool::Instance().Schedule(entry, job);
+                    Core::IWorkerPool::Instance().Schedule(entry, job);
                 }
 
                 return (result);
@@ -330,7 +330,7 @@ namespace Plugin {
 
             inline void CleanUp()
             {
-                PluginHost::WorkerPool::Instance().Revoke(Core::ProxyType<Core::IDispatch>(*this));
+                Core::IWorkerPool::Instance().Revoke(Core::ProxyType<Core::IDispatch>(*this));
             }
             inline void Completed()
             {
@@ -357,7 +357,7 @@ namespace Plugin {
                     _client.Resend();
 
                     // Submit a job, as watchdog.
-                    PluginHost::WorkerPool::Instance().Schedule(entry, job);
+                    Core::IWorkerPool::Instance().Schedule(entry, job);
                 } else {
 
                     _parent.Expired(_client.Interface());

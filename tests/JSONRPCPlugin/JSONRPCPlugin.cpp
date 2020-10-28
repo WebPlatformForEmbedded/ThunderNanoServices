@@ -58,7 +58,7 @@ namespace Plugin
 		_rpcServer = new COMServer(Core::NodeId(config.Connector.Value().c_str()), this, service->ProxyStubPath());
 
         _job->Period(5);
-        PluginHost::WorkerPool::Instance().Schedule(Core::Time::Now().Add(5000), _job);
+        Core::IWorkerPool::Instance().Schedule(Core::Time::Now().Add(5000), _job);
 
         // On success return empty, to indicate there is no error text.
         return (string());
@@ -67,7 +67,7 @@ namespace Plugin
     /* virtual */ void JSONRPCPlugin::Deinitialize(PluginHost::IShell * /* service */)
     {
         _job->Period(0);
-        PluginHost::WorkerPool::Instance().Revoke(_job);
+        Core::IWorkerPool::Instance().Revoke(_job);
         delete _rpcServer;
 	}
 

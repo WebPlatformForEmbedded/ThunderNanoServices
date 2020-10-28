@@ -54,7 +54,7 @@ namespace Plugin {
                 _parent.SendTime();
 
                 if (_nextSlot != 0) {
-                    PluginHost::WorkerPool::Instance().Schedule(Core::Time::Now().Add(_nextSlot), Core::ProxyType<Core::IDispatch>(*this));
+                    Core::IWorkerPool::Instance().Schedule(Core::Time::Now().Add(_nextSlot), Core::ProxyType<Core::IDispatch>(*this));
                 }
             }
 

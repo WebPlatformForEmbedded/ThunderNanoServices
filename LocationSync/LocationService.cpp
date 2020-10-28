@@ -321,7 +321,7 @@ namespace Plugin {
                     _infoCarrier = constructor->factory();
                     _response = Core::proxy_cast<Web::IBody>(_infoCarrier);
 
-                    PluginHost::WorkerPool::Instance().Submit(_activity);
+                    Core::IWorkerPool::Instance().Submit(_activity);
 
                     result = Core::ERROR_NONE;
                 }
@@ -338,7 +338,7 @@ namespace Plugin {
 
         _adminLock.Lock();
 
-        PluginHost::WorkerPool::Instance().Revoke(_activity);
+        Core::IWorkerPool::Instance().Revoke(_activity);
 
         if ((_state != IDLE) && (_state != FAILED) && (_state != LOADED)) {
 
@@ -420,7 +420,7 @@ namespace Plugin {
         }
 
         // Finish the cycle..
-        PluginHost::WorkerPool::Instance().Submit(_activity);
+        Core::IWorkerPool::Instance().Submit(_activity);
     }
 
     /* virtual */ void LocationService::Send(const Core::ProxyType<Web::Request>& element)
@@ -440,7 +440,7 @@ namespace Plugin {
             Submit(_request);
         } else if (Link().HasError() == true) {
             Close(0);
-            PluginHost::WorkerPool::Instance().Submit(_activity);
+            Core::IWorkerPool::Instance().Submit(_activity);
         }
     }
 
@@ -512,7 +512,7 @@ namespace Plugin {
         if (result != Core::infinite) {
             Core::Time timestamp(Core::Time::Now());
             timestamp.Add(result);
-            PluginHost::WorkerPool::Instance().Schedule(timestamp, _activity);
+            Core::IWorkerPool::Instance().Schedule(timestamp, _activity);
         }
     }
 

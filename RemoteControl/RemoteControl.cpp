@@ -242,9 +242,8 @@ namespace Plugin {
             }
 
             _skipURL = static_cast<uint32_t>(service->WebPrefix().length());
-            _inputHandler->Interval(config.RepeatStart.Value(), config.RepeatInterval.Value());
             uint16_t repeatLimit = ((config.ReleaseTimeout.Value() - config.RepeatStart.Value()) / config.RepeatInterval.Value()) + 1;
-            _inputHandler->RepeatLimit(repeatLimit);
+            _inputHandler->Interval(config.RepeatStart.Value(), config.RepeatInterval.Value(), repeatLimit);
             _inputHandler->Default(DefaultMappingTable);
             admin.Callback(this);
         }
@@ -590,7 +589,6 @@ namespace Plugin {
                         uint16_t key = 0;
                         uint32_t modifiers = 0;
                         if (ParseRequestBody(request, code, key, modifiers) == true) {
-
                             result->ErrorCode = Web::STATUS_NOT_FOUND;
                             result->Message = string(_T("Key does not exist in ") + deviceName);
 

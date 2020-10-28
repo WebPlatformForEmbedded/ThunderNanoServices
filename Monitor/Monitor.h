@@ -725,13 +725,13 @@ namespace Plugin {
 
                 _adminLock.Unlock();
 
-                PluginHost::WorkerPool::Instance().Submit(_job);
+                Core::IWorkerPool::Instance().Submit(_job);
             }
             inline void Close()
             {
                 ASSERT(_service != nullptr);
 
-                PluginHost::WorkerPool::Instance().Revoke(_job);
+                Core::IWorkerPool::Instance().Revoke(_job);
 
                 _adminLock.Lock();
                 _monitor.clear();
@@ -771,7 +771,7 @@ namespace Plugin {
                             _service->Notify(message);
                             _parent.event_action(service->Callsign(), "Activate", "Automatic");
                             TRACE(Trace::Information, (_T("Restarting %s again because we detected it misbehaved.\n"), service->Callsign().c_str()));
-                            PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(service, PluginHost::IShell::ACTIVATED, PluginHost::IShell::AUTOMATIC));
+                            Core::IWorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(service, PluginHost::IShell::ACTIVATED, PluginHost::IShell::AUTOMATIC));
                         }
                     }
                 }
@@ -919,7 +919,7 @@ namespace Plugin {
 
                                 _parent.event_action(plugin->Callsign(), "Deactivate", why.Data());
 
-                                PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(plugin, PluginHost::IShell::DEACTIVATED, why.Value()));
+                                Core::IWorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(plugin, PluginHost::IShell::DEACTIVATED, why.Value()));
 
                                 plugin->Release();
                             }
@@ -936,10 +936,10 @@ namespace Plugin {
 
                 if (nextSlot != static_cast<uint64_t>(~0)) {
                     if (nextSlot < Core::Time::Now().Ticks()) {
-                        PluginHost::WorkerPool::Instance().Submit(_job);
+                        Core::IWorkerPool::Instance().Submit(_job);
                     } else {
                         nextSlot += 1000 /* Add 1 ms */;
-                        PluginHost::WorkerPool::Instance().Schedule(nextSlot, _job);
+                        Core::IWorkerPool::Instance().Schedule(nextSlot, _job);
                     }
                 }
             }

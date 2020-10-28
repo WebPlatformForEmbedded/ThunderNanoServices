@@ -123,7 +123,7 @@ namespace Plugin {
                 _parent.SendTime();
 
                 if (_nextSlot != 0) {
-                    PluginHost::WorkerPool::Instance().Schedule(Core::Time::Now().Add(_nextSlot), Core::ProxyType<Core::IDispatch>(*this));
+                    Core::IWorkerPool::Instance().Schedule(Core::Time::Now().Add(_nextSlot), Core::ProxyType<Core::IDispatch>(*this));
                 }
             }
 
@@ -288,7 +288,7 @@ namespace Plugin {
         void async_callback(const Core::JSONRPC::Connection& connection, const Core::JSON::DecUInt8& seconds)
         {
             Core::ProxyType<Callback> job(Core::ProxyType<Callback>::Create(this, connection));
-            PluginHost::WorkerPool::Instance().Schedule(Core::Time::Now().Add(seconds * 1000), job);
+            Core::IWorkerPool::Instance().Schedule(Core::Time::Now().Add(seconds * 1000), job);
         }
 
 		// Methods for performance measurements

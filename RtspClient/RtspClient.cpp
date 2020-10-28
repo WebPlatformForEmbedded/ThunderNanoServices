@@ -128,7 +128,7 @@ namespace Plugin {
 
             ASSERT(_service != nullptr);
 
-            PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service,
+            Core::IWorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service,
                 PluginHost::IShell::DEACTIVATED,
                 PluginHost::IShell::FAILURE));
         }

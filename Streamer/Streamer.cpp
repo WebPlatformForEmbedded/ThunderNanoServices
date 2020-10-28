@@ -349,7 +349,7 @@ namespace Plugin {
         // on a seperate thread. Also make sure this call-stack can be unwound before we are totally destructed.
         if (_pid == process->Id()) {
             ASSERT(_service != nullptr);
-            PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::FAILURE));
+            Core::IWorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::FAILURE));
         }
     }
 
